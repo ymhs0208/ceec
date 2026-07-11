@@ -1,0 +1,230 @@
+
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="google-adsense-account" content="ca-pub-6966991656561179">
+    <!-- Primary Meta Tags -->
+    <title>大考倒數 - 學測・會考・統測・分科測驗讀書計時助手</title>
+    <meta name="title" content="大考倒數 - 學測・會考・統測・分科測驗讀書計時助手" />
+    <meta name="description" content="全方位大考倒數計時器與備考助手。專為學測、會考、統測、分科測驗考生設計，提供精準倒數、番茄鐘專注計時、讀書計畫表、歷屆試題與每日激勵語錄。支援雲端同步讀書紀錄，陪伴你戰勝大考！" />
+    <meta name="keywords" content="學測倒數, 會考倒數, 統測倒數, 分科倒數, 116學測, 115會考, 115統測, 115分科, 讀書計畫, 番茄鐘, 線上倒數, 大考倒數, 專注計時, 讀書紀錄, 模擬考, 升學, Focus Space" />
+    <meta name="author" content="Focus Space Team" />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#4f46e5" />
+    <meta name="image" content="https://ceecc.vercel.app/og-image.png" />
+    <link rel="canonical" href="https://ceecc.vercel.app/" />
+
+    <!-- Open Graph / Facebook / Line -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Focus Space 大考倒數" />
+    <meta property="og:locale" content="zh_TW" />
+    <meta property="og:url" content="https://ceecc.vercel.app/" />
+    <meta property="og:title" content="大考倒數 - 學測・會考・統測・分科計時與讀書助手" />
+    <meta property="og:description" content="還有多少時間準備大考？Focus Space 提供最美觀的倒數計時、番茄鐘與讀書計畫功能，陪你一起拚進理想志願。" />
+    <meta property="og:image" content="https://ceecc.vercel.app/og-image.png" />
+    <meta property="og:image:secure_url" content="https://ceecc.vercel.app/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Focus Space 大考倒數：學測、會考、統測、分科測驗讀書計時助手" />
+    <meta name="google-site-verification" content="eGI3oOhrVVbqjfKd573-m1X00npd47HbZCyJrsKLzEY" />
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://ceecc.vercel.app/" />
+    <meta property="twitter:title" content="大考倒數 - 學測・會考・統測・分科計時與讀書助手" />
+    <meta property="twitter:description" content="還有多少時間準備大考？Focus Space 提供最美觀的倒數計時、番茄鐘與讀書計畫功能，陪你一起拚進理想志願。" />
+    <meta property="twitter:image" content="https://ceecc.vercel.app/og-image.png" />
+    <meta property="twitter:image:alt" content="Focus Space 大考倒數：學測、會考、統測、分科測驗讀書計時助手" />
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="manifest" href="/site.webmanifest">
+    <!-- Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "大考倒數 - Focus Space",
+      "url": "https://ceecc.vercel.app/",
+      "image": "https://ceecc.vercel.app/og-image.png",
+      "description": "專為台灣大考（學測、會考、統測、分科測驗）考生設計的倒數計時器與備考助手，包含番茄鐘、讀書計畫與紀錄功能。",
+      "applicationCategory": "EducationalApplication",
+      "operatingSystem": "Any",
+      "sameAs": [
+        "https://tyctw.github.io/clock/",
+        "https://tyctw.github.io/115clock/",
+        "https://uactw.vercel.app/",
+        "https://teece.vercel.app/"
+      ],
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "TWD"
+      },
+      "featureList": "學測倒數, 會考倒數, 番茄鐘, 讀書計畫, 讀書紀錄, 雲端同步, 激勵語錄"
+    }
+    </script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"Plus Jakarta Sans"', '"Noto Sans TC"', 'sans-serif'],
+              mono: ['"JetBrains Mono"', 'monospace'],
+            },
+            colors: {
+              glass: 'rgba(255, 255, 255, 0.6)',
+              glassHover: 'rgba(255, 255, 255, 0.8)',
+            },
+            animation: {
+              'blob': 'blob 10s infinite',
+              'fade-in': 'fadeIn 0.5s ease-out forwards',
+              'fade-in-up': 'fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'fade-in-down': 'fadeInDown 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'scale-in': 'scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'slide-in-right': 'slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'slide-in-left': 'slideInLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'breathing-blob': 'breathingBlob 4s ease-in-out infinite',
+              'breathing-text': 'breathingText 4s ease-in-out infinite',
+            },
+            keyframes: {
+              blob: {
+                '0%': { transform: 'translate(0px, 0px) scale(1)' },
+                '33%': { transform: 'translate(30px, -30px) scale(1.1)' },
+                '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
+                '100%': { transform: 'translate(0px, 0px) scale(1)' },
+              },
+              breathingBlob: {
+                '0%, 100%': { transform: 'scale(1)', opacity: '0.3' },
+                '50%': { transform: 'scale(1.15)', opacity: '0.6' },
+              },
+              breathingText: {
+                '0%, 100%': { opacity: '0.85', transform: 'scale(1)' },
+                '50%': { opacity: '1', transform: 'scale(1.02)' },
+              },
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              fadeInUp: {
+                '0%': { opacity: '0', transform: 'translateY(20px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              fadeInDown: {
+                '0%': { opacity: '0', transform: 'translateY(-20px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              scaleIn: {
+                '0%': { opacity: '0', transform: 'scale(0.95)' },
+                '100%': { opacity: '1', transform: 'scale(1)' },
+              },
+              slideInRight: {
+                '0%': { transform: 'translateX(100%)' },
+                '100%': { transform: 'translateX(0)' },
+              },
+              slideInLeft: {
+                '0%': { transform: 'translateX(-100%)' },
+                '100%': { transform: 'translateX(0)' },
+              }
+            },
+            transitionDelay: {
+              '0': '0ms',
+              '200': '200ms',
+              '400': '400ms',
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        background-color: #f8fafc; /* Slate 50 */
+        color: #0f172a; /* Slate 900 */
+        overflow-x: hidden;
+      }
+      
+      /* Animation Delays Utility */
+      .delay-100 { animation-delay: 100ms; }
+      .delay-200 { animation-delay: 200ms; }
+      .delay-300 { animation-delay: 300ms; }
+      .delay-500 { animation-delay: 500ms; }
+      .delay-700 { animation-delay: 700ms; }
+      
+      /* Subtle Grain Texture for Light Mode */
+      .bg-grain {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: -1;
+        opacity: 0.4;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E");
+      }
+
+      /* Custom Scrollbar - Light Theme */
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #cbd5e1; /* Slate 300 */
+        border-radius: 10px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8; /* Slate 400 */
+      }
+
+      /* Light Glass Card Utility */
+      .glass-card {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.8);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+      }
+      
+      .glass-card-hover:hover {
+        background: rgba(255, 255, 255, 0.9);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
+        transform: translateY(-2px);
+        transition: all 0.3s ease;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react-dom": "https://esm.sh/react-dom@^19.2.4"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div class="bg-grain"></div>
+    <div id="root"></div>
+    <script src="/vendor/supabase.js"></script>
+    <script type="module" src="/index.tsx"></script>
+            <script async src="https://www.googletagmanager.com/gtag/js?id=G-H9X7EC127P"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-H9X7EC127P');
+
+</script>
+</body>
+</html>
