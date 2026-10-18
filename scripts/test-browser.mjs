@@ -57,7 +57,7 @@ try {
   browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : process.platform === 'win32' ? { channel: 'msedge' } : {}) });
 
   await check('all public pages render on mobile and desktop without horizontal overflow', async () => {
-    const pages = ['', 'ranking', 'community', 'learning', 'achievements', 'temple', 'settings', 'account', 'instructions', 'privacy', 'terms', 'schedule', 'donation', 'announcements', 'support', 'refund-policy', 'auth/login', 'auth/signup', 'auth/forgot', 'auth/reset'];
+    const pages = ['', 'ranking', 'community', 'learning', 'achievements', 'temple', 'settings', 'account', 'instructions', 'privacy', 'terms', 'schedule', 'donation', 'announcements', 'exam-checklist', 'support', 'refund-policy', 'auth/login', 'auth/signup', 'auth/forgot', 'auth/reset'];
     const page = await openPage();
     for (const width of [320, 1440]) {
       await page.setViewportSize({ width, height: 900 });

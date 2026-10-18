@@ -12,6 +12,7 @@ export const PAGE_ROUTES = {
   instructions: { path: 'instructions', label: '使用說明' },
   privacy: { path: 'privacy', label: '隱私權政策' },
   terms: { path: 'terms', label: '服務條款' },
+  examChecklist: { path: 'exam-checklist', label: '考前檢查暨應考注意事項' },
   schedule: { path: 'schedule', label: '官方參考日程' },
   donation: { path: 'donation', label: '小額贊助' },
   announcements: { path: 'announcements', label: '最新公告' },

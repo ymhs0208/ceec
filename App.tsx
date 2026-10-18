@@ -20,7 +20,7 @@ import { readLogoutBackup, saveLogoutBackup, removeLogoutBackup, ACCOUNT_STORAGE
 import { filterStudyHistory, mergeStudyHistoryReset } from './utils/studyHistory';
 import { TvetCategoryModal } from './components/TvetCategoryModal';
 import ConfirmExamSwitchModal from './components/ConfirmExamSwitchModal';
-import { ScoreQueryModal, LoginSuggestionModal, ExamReminderModal } from './components/InfoModals';
+import { ScoreQueryModal, LoginSuggestionModal } from './components/InfoModals';
 import { ACHIEVEMENTS, Achievement, getLocalDateKey, reconcileStudyStreak } from './utils/achievements';
 import { reconcileTempleCoins, getTempleCoinDifferences } from './utils/templeReconciliation';
 import { AchievementToast } from './components/AchievementToast';
@@ -36,6 +36,7 @@ import AnalyticsConsent, { openAnalyticsSettings } from './components/AnalyticsC
 import { FORTUNES } from './data/fortunes';
 import { useToday } from './utils/useToday';
 
+const ExamChecklistPage = lazy(() => import('./components/ExamChecklistPage'));
 const OfficialSchedulePage = lazy(() => import('./components/OfficialSchedulePage'));
 const FocusStatsModal = lazy(() => import('./components/FocusStatsModal'));
 const TodayCommunityStudy = lazy(() => import('./components/TodayCommunityStudy'));
@@ -641,6 +642,7 @@ const App: React.FC = () => {
 
   // Exam Reminder Logic
   useEffect(() => {
+     if (activePage !== 'home') return;
      const checkExamReminder = () => {
        const now = new Date();
        const examDate = parseTaipeiDateTime(targetDateStr);
@@ -658,8 +660,15 @@ const App: React.FC = () => {
           return () => clearTimeout(timer);
        }
     };
-    checkExamReminder();
-  }, [targetDateStr, isLoginSuggestionOpen]);
+    return checkExamReminder();
+  }, [targetDateStr, isLoginSuggestionOpen, activePage]);
+
+  useEffect(() => {
+    if (activePage === 'examChecklist') {
+      setIsExamReminderOpen(false);
+      safeLocalStorage.setItem('gsat_exam_reminder_seen_116', 'true');
+    }
+  }, [activePage]);
 
   const handleCloseExamReminder = () => {
      setIsExamReminderOpen(false);
@@ -2021,10 +2030,12 @@ const App: React.FC = () => {
         targetSchool={targetSchool} isLoggedIn={Boolean(user)} userName={user?.name} isSyncing={isSyncing}
         onNavigate={setActivePage} pastUrl={currentExamLinks.pastUrl}
         pastTitle={currentExamLinks.pastTitle} scoreTitle={currentExamLinks.scoreTitle}
-        onScoreQuery={handleScoreQueryClick} onExamReminder={() => setIsExamReminderOpen(true)} />
+        onScoreQuery={handleScoreQueryClick} />
 
       {activePage === 'home' && <div aria-hidden="true" className="header-announcement-spacer flex-none" />}
       <div aria-hidden="true" className="h-[92px] flex-none md:h-[102px]" />
+
+      {isExamReminderOpen && activePage === 'home' && <aside className="relative z-10 mx-auto mb-5 flex w-full max-w-7xl items-center gap-3 rounded-2xl border border-purple-100 bg-purple-50 p-4 text-sm text-purple-900" aria-label="考前準備提醒"><ClipboardCheck size={20} className="shrink-0" /><p className="min-w-0 flex-1">考試即將到來，出發前記得確認應考物品。</p><PageLink page="examChecklist" examId={targetExam} onClick={() => { handleCloseExamReminder(); setActivePage('examChecklist'); }} className="shrink-0 font-bold">開始檢查</PageLink><button type="button" onClick={handleCloseExamReminder} aria-label="關閉應考提醒" className="shrink-0 p-2"><X size={16} /></button></aside>}
 
       <Suspense fallback={<PageLoading />}>
       {activePage === 'ranking' ? (
@@ -2130,6 +2141,8 @@ const App: React.FC = () => {
           executeReset={executeReset}
         />
       </main>
+      ) : activePage === 'examChecklist' ? (
+        <ExamChecklistPage examId={targetExam} onBack={() => setActivePage('home')} checkedItems={examChecklist} onCheckChange={setSyncedExamChecklist} />
       ) : activePage === 'announcements' ? (
         <AnnouncementsPage onBack={() => setActivePage('home')} />
       ) : activePage === 'privacy' ? (
@@ -2681,7 +2694,6 @@ const App: React.FC = () => {
          openTime={currentScoreInfo.displayStr}
       />
       <LoginSuggestionModal isOpen={isLoginSuggestionOpen} onClose={handleCloseLoginSuggestion} onLogin={handleSuggestionToAuth} />
-      <ExamReminderModal isOpen={isExamReminderOpen} onClose={handleCloseExamReminder} checkedItems={examChecklist} onCheckChange={setSyncedExamChecklist} />
 
       <TvetCategoryModal
         isOpen={isTvetCategoryModalOpen}

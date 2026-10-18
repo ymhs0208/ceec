@@ -16,7 +16,7 @@ const localRequire = name => {
 };
 new Function('require', 'module', 'exports', compiled)(localRequire, module, module.exports);
 const Header = module.exports.default;
-const props = { activePage: 'home', examId: '116gsat', examName: '116學測', targetSchool: '', isSyncing: false, onNavigate() {}, pastUrl: '#', pastTitle: '歷屆試題', scoreTitle: '成績查詢', onScoreQuery() {}, onExamReminder() {} };
+const props = { activePage: 'home', examId: '116gsat', examName: '116學測', targetSchool: '', isSyncing: false, onNavigate() {}, pastUrl: '#', pastTitle: '歷屆試題', scoreTitle: '成績查詢', onScoreQuery() {} };
 const render = state => renderToStaticMarkup(React.createElement(Header, { ...props, ...state }));
 const guest = render({ isLoggedIn: false });
 assert.match(guest, /aria-label="尚未登入，登入或註冊"/);

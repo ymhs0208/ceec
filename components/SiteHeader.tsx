@@ -7,6 +7,7 @@ import './SiteHeader.css';
 const groups = [
   { title: '備考規劃', items: [
     { page: 'home', label: '倒數首頁', description: '倒數與今日任務', icon: LayoutGrid },
+    { page: 'examChecklist', label: '考前檢查', description: '必帶物品與應考注意事項', icon: BellRing },
     { page: 'schedule', label: '考試日程', description: '掌握重要日期', icon: CalendarDays },
     { page: 'announcements', label: '最新公告', description: '備考消息與提醒', icon: Sparkles },
   ] },
@@ -33,7 +34,7 @@ type Props = {
   activePage: ActivePage; examId: string; examName: string; targetSchool: string;
   isLoggedIn: boolean; userName?: string; isSyncing: boolean; onNavigate: (page: ActivePage) => void;
   pastUrl: string; pastTitle: string; scoreTitle: string;
-  onScoreQuery: () => void; onExamReminder: () => void;
+  onScoreQuery: () => void;
 };
 
 export default function SiteHeader(props: Props) {
@@ -108,7 +109,7 @@ export default function SiteHeader(props: Props) {
     <p className="header-resources-heading">考試快捷入口<span>常用資訊，一步前往</span></p>
     <a href={props.pastUrl} target="_blank" rel="noopener noreferrer" aria-label={`${props.pastTitle}（另開分頁）`}><span className="header-resource-symbol"><BookOpen size={18} aria-hidden="true" /></span><strong>{props.pastTitle}</strong><small>另開分頁<ExternalLink size={9} aria-hidden="true" /></small></a>
     <button type="button" aria-label={props.scoreTitle} onClick={() => { close(); props.onScoreQuery(); }}><span className="header-resource-symbol"><Search size={18} aria-hidden="true" /></span><strong>{props.scoreTitle}</strong><small>查詢成績資訊</small></button>
-    <button type="button" aria-label="應考提醒" onClick={() => { close(); props.onExamReminder(); }}><span className="header-resource-symbol"><BellRing size={18} aria-hidden="true" /></span><strong>應考提醒</strong><small>考前準備清單</small></button>
+    <PageLink page="examChecklist" examId={props.examId} aria-label="應考提醒" onClick={() => navigate('examChecklist')}><span className="header-resource-symbol"><BellRing size={18} aria-hidden="true" /></span><strong>應考提醒</strong><small>考前準備清單</small></PageLink>
   </div>;
 
   return <>

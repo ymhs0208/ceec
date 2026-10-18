@@ -16,6 +16,7 @@
 | 使用說明 | `/116gsat/instructions` |
 | 隱私權政策 | `/116gsat/privacy` |
 | 服務條款 | `/116gsat/terms` |
+| 考前檢查暨應考注意事項 | `/116gsat/exam-checklist` |
 | 官方參考日程 | `/116gsat/schedule` |
 | 小額贊助 | `/116gsat/donation` |
 | 最新公告 | `/116gsat/announcements` |
