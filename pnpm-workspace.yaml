@@ -3,6 +3,7 @@ packages:
 
 allowBuilds:
   esbuild: true
+  workerd: true
 
 # Tailwind 3 consumers use the compatible parser API; 6.x has no security fix.
 overrides:

@@ -7,3 +7,6 @@ package-lock.json
 dist/
 migration-data/
 migration-report.json
+.wrangler/
+.dev.vars*
+.DS_Store
