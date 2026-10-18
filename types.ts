@@ -12,6 +12,8 @@ export interface TodoItem {
   completed: boolean;
   category: 'chinese' | 'english' | 'math' | 'social' | 'natural' | 'other';
   dueDate?: string; // e.g. YYYY-MM-DD
+  /** Millisecond timestamp used for conflict-safe cross-device synchronization. */
+  updatedAt?: number;
 }
 
 export interface StudySession {
@@ -28,6 +30,7 @@ export interface ChallengeRecord {
   duration: number; // in seconds (e.g., 600 for 10 mins)
   tasksCompleted: number;
   timestamp: number;
+  updatedAt?: number;
 }
 
 export interface RankingItem {
@@ -51,6 +54,7 @@ export interface CustomDate {
   id: string;
   title: string;
   date: string;
+  updatedAt?: number;
 }
 
 export interface StreakData {
@@ -63,12 +67,14 @@ export interface AudioTrack {
   id: string;
   name: string;
   youtubeId: string;
+  updatedAt?: number;
 }
 
 export interface Playlist {
   id: string;
   name: string;
   tracks: AudioTrack[];
+  updatedAt?: number;
 }
 
 export interface BackupItem {
@@ -101,6 +107,7 @@ export interface User {
   name: string;
   registrationDate?: string;
   lastLoginDate?: string;
+  needsOnboarding?: boolean;
 }
 
 export interface TempleState {
@@ -114,10 +121,24 @@ export interface IncenseRecord {
   amount: number;
   reason: string;
   timestamp: number;
+  /** Server link for the original award and any append-only credit repairs. */
+  studySessionId?: string | null;
+}
+
+/** Authoritative temple state returned by the server ledger. */
+export interface TempleSyncData {
+  revision?: number;
+  incenseCoins: number;
+  incenseRecords: IncenseRecord[];
+  templeState: TempleState;
 }
 
 export interface AppData {
+  /** Completion times at or before this cutoff were intentionally reset. */
+  studyHistoryResetAt?: number;
   tasks: TodoItem[];
+  /** Append-only completion evidence; deleting a task does not undo its completion. */
+  completedTaskIds?: string[];
   studySessions: StudySession[];
   challengeRecords: ChallengeRecord[];
   targetSchool: string;
@@ -126,9 +147,18 @@ export interface AppData {
   targetExam?: string;
   tvetCategory?: string;
   customDates: CustomDate[];
+  /** IDs intentionally removed on another device; used to prevent union sync from restoring them. */
+  deletedCustomDateIds?: string[];
+  /** Task deletion markers prevent a stale device from restoring removed tasks. */
+  deletedTaskIds?: string[];
+  /** Per-field timestamps used to resolve simultaneous settings updates. */
+  syncMetadata?: Record<string, number>;
   dailyGoal: number; // minutes
   streak: StreakData;
   playlists: Playlist[];
+  /** Playlist and track deletion markers for cross-device sync. */
+  deletedPlaylistIds?: string[];
+  deletedTrackIds?: Record<string, string[]>;
   activePlaylistId: string;
   incenseCoins: number;
   incenseRecords: IncenseRecord[];
@@ -140,6 +170,9 @@ export interface AppData {
 
 export interface AuthResponse {
   success: boolean;
+  stateRevision?: string | null;
+  /** Durable acknowledgements may be returned even if another record failed. */
+  syncedStudySessionIds?: string[];
   message?: string;
   code?: string;
   user?: User;

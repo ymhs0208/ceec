@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { getDailyQuote } from '../services/quoteService';
+import { getDailyQuote, isParentStudyQuoteToday } from '../services/quoteService';
 import { Sparkles, Quote, MessageSquareQuote } from 'lucide-react';
 
 const QuoteCard: React.FC = () => {
   const [quote, setQuote] = useState<string>('');
+  const [isParentQuote, setIsParentQuote] = useState(false);
 
   useEffect(() => {
     setQuote(getDailyQuote());
+    setIsParentQuote(isParentStudyQuoteToday());
   }, []);
 
   return (
@@ -18,7 +20,9 @@ const QuoteCard: React.FC = () => {
            <div className="p-2 rounded-lg bg-indigo-100/80 text-indigo-600 shadow-sm">
              <Sparkles className="w-4 h-4" />
            </div>
-           <span className="text-xs font-bold tracking-widest text-indigo-900/60 uppercase block md:hidden">每日激勵</span>
+           <span className={`text-xs font-bold tracking-widest uppercase ${isParentQuote ? 'block text-amber-700' : 'block md:hidden text-indigo-900/60'}`}>
+             {isParentQuote ? '爸媽提醒' : '每日激勵'}
+           </span>
         </div>
         
         {/* Divider (Desktop) */}

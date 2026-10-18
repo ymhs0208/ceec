@@ -1,0 +1,333 @@
+{
+  "advisories": {
+    "1108110": {
+      "findings": [
+        {
+          "version": "0.18.5",
+          "paths": [
+            ".>xlsx"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1108110,
+      "title": "Prototype Pollution in sheetJS",
+      "module_name": "xlsx",
+      "vulnerable_versions": "<0.19.3",
+      "patched_versions": null,
+      "severity": "high",
+      "cwe": "CWE-1321",
+      "github_advisory_id": "GHSA-4r6h-8v6p-xvw6",
+      "url": "https://github.com/advisories/GHSA-4r6h-8v6p-xvw6",
+      "patched_versions_unpublished": true
+    },
+    "1108111": {
+      "findings": [
+        {
+          "version": "0.18.5",
+          "paths": [
+            ".>xlsx"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1108111,
+      "title": "SheetJS Regular Expression Denial of Service (ReDoS)",
+      "module_name": "xlsx",
+      "vulnerable_versions": "<0.20.2",
+      "patched_versions": null,
+      "severity": "high",
+      "cwe": "CWE-1333",
+      "github_advisory_id": "GHSA-5pgg-2g8v-p4x9",
+      "url": "https://github.com/advisories/GHSA-5pgg-2g8v-p4x9",
+      "patched_versions_unpublished": true
+    },
+    "1130709": {
+      "findings": [
+        {
+          "version": "8.5.16",
+          "paths": [
+            ".>@vitejs/plugin-react>vite>postcss",
+            ".>autoprefixer>postcss",
+            ".>postcss",
+            ".>tailwindcss>postcss",
+            ".>tailwindcss>postcss-import>postcss",
+            ".>tailwindcss>postcss-js>postcss",
+            ".>tailwindcss>postcss-load-config>postcss",
+            ".>tailwindcss>postcss-nested>postcss",
+            ".>vite>postcss"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1130709,
+      "title": "PostCSS: incomplete fix of GHSA-6g55-p6wh-862q — attacker-controlled sourceMappingURL reads arbitrary .map files when `from` is unset",
+      "module_name": "postcss",
+      "vulnerable_versions": "<=8.5.22",
+      "patched_versions": ">=8.5.23",
+      "severity": "moderate",
+      "cwe": "CWE-22, CWE-200",
+      "github_advisory_id": "GHSA-fxqj-rqcc-2cmp",
+      "url": "https://github.com/advisories/GHSA-fxqj-rqcc-2cmp"
+    },
+    "1138811": {
+      "findings": [
+        {
+          "version": "3.3.15",
+          "paths": [
+            ".>@vitejs/plugin-react>vite>postcss>nanoid",
+            ".>autoprefixer>postcss>nanoid",
+            ".>postcss>nanoid",
+            ".>tailwindcss>postcss>nanoid",
+            ".>tailwindcss>postcss-import>postcss>nanoid",
+            ".>tailwindcss>postcss-js>postcss>nanoid",
+            ".>tailwindcss>postcss-load-config>postcss>nanoid",
+            ".>tailwindcss>postcss-nested>postcss>nanoid",
+            ".>vite>postcss>nanoid"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1138811,
+      "title": "nanoid: non-secure generators can loop indefinitely with negative size",
+      "module_name": "nanoid",
+      "vulnerable_versions": "<3.3.16",
+      "patched_versions": ">=3.3.16",
+      "severity": "high",
+      "cwe": "CWE-835",
+      "github_advisory_id": "GHSA-28wg-ghj8-5hjv",
+      "url": "https://github.com/advisories/GHSA-28wg-ghj8-5hjv"
+    },
+    "1139427": {
+      "findings": [
+        {
+          "version": "3.3.15",
+          "paths": [
+            ".>@vitejs/plugin-react>vite>postcss>nanoid",
+            ".>autoprefixer>postcss>nanoid",
+            ".>postcss>nanoid",
+            ".>tailwindcss>postcss>nanoid",
+            ".>tailwindcss>postcss-import>postcss>nanoid",
+            ".>tailwindcss>postcss-js>postcss>nanoid",
+            ".>tailwindcss>postcss-load-config>postcss>nanoid",
+            ".>tailwindcss>postcss-nested>postcss>nanoid",
+            ".>vite>postcss>nanoid"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1139427,
+      "title": "nanoid: custom generators can loop indefinitely when size is zero",
+      "module_name": "nanoid",
+      "vulnerable_versions": "<3.3.18",
+      "patched_versions": ">=3.3.18",
+      "severity": "high",
+      "cwe": "CWE-835",
+      "github_advisory_id": "GHSA-2v37-7h3g-55p8",
+      "url": "https://github.com/advisories/GHSA-2v37-7h3g-55p8"
+    },
+    "1139510": {
+      "findings": [
+        {
+          "version": "8.5.16",
+          "paths": [
+            ".>@vitejs/plugin-react>vite>postcss",
+            ".>autoprefixer>postcss",
+            ".>postcss",
+            ".>tailwindcss>postcss",
+            ".>tailwindcss>postcss-import>postcss",
+            ".>tailwindcss>postcss-js>postcss",
+            ".>tailwindcss>postcss-load-config>postcss",
+            ".>tailwindcss>postcss-nested>postcss",
+            ".>vite>postcss"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1139510,
+      "title": "PostCSS: Path Traversal in Previous Source Map Auto-Loading (sourceMappingURL) leads to Arbitrary .map File Disclosure",
+      "module_name": "postcss",
+      "vulnerable_versions": "<=8.5.17",
+      "patched_versions": ">=8.5.18",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "github_advisory_id": "GHSA-r28c-9q8g-f849",
+      "url": "https://github.com/advisories/GHSA-r28c-9q8g-f849"
+    },
+    "1153171": {
+      "findings": [
+        {
+          "version": "4.28.5",
+          "paths": [
+            ".>@vitejs/plugin-react>@babel/core>@babel/helper-compilation-targets>browserslist",
+            ".>@vitejs/plugin-react>@babel/plugin-transform-react-jsx-self>@babel/core>@babel/helper-compilation-targets>browserslist",
+            ".>@vitejs/plugin-react>@babel/plugin-transform-react-jsx-source>@babel/core>@babel/helper-compilation-targets>browserslist"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1153171,
+      "title": "Browserslist: Unbounded memory growth (no cache eviction) via distinct query results, leading to eventual OOM",
+      "module_name": "browserslist",
+      "vulnerable_versions": "<=4.28.6",
+      "patched_versions": ">=4.28.7",
+      "severity": "high",
+      "cwe": "CWE-770",
+      "github_advisory_id": "GHSA-c83g-rgw3-j3cx",
+      "url": "https://github.com/advisories/GHSA-c83g-rgw3-j3cx"
+    },
+    "1153172": {
+      "findings": [
+        {
+          "version": "4.28.5",
+          "paths": [
+            ".>@vitejs/plugin-react>@babel/core>@babel/helper-compilation-targets>browserslist",
+            ".>@vitejs/plugin-react>@babel/plugin-transform-react-jsx-self>@babel/core>@babel/helper-compilation-targets>browserslist",
+            ".>@vitejs/plugin-react>@babel/plugin-transform-react-jsx-source>@babel/core>@babel/helper-compilation-targets>browserslist"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1153172,
+      "title": "Browserslist: Uncaught crash / prototype write via untrusted browserslist-stats.json custom stats (normalizeStats)",
+      "module_name": "browserslist",
+      "vulnerable_versions": "<=4.28.6",
+      "patched_versions": ">=4.28.7",
+      "severity": "high",
+      "cwe": "CWE-248, CWE-1321",
+      "github_advisory_id": "GHSA-73wf-gq98-2v4g",
+      "url": "https://github.com/advisories/GHSA-73wf-gq98-2v4g"
+    },
+    "1193686": {
+      "findings": [
+        {
+          "version": "2.10.42",
+          "paths": [
+            ".>@vitejs/plugin-react>@babel/core>@babel/helper-compilation-targets>browserslist>baseline-browser-mapping",
+            ".>@vitejs/plugin-react>@babel/plugin-transform-react-jsx-self>@babel/core>@babel/helper-compilation-targets>browserslist>baseline-browser-mapping",
+            ".>@vitejs/plugin-react>@babel/plugin-transform-react-jsx-source>@babel/core>@babel/helper-compilation-targets>browserslist>baseline-browser-mapping"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1193686,
+      "title": "baseline-browser-mapping process termination on invalid input causes denial of service",
+      "module_name": "baseline-browser-mapping",
+      "vulnerable_versions": ">=2.0.0 <2.11.0",
+      "patched_versions": ">=2.11.0",
+      "severity": "moderate",
+      "cwe": "CWE-705",
+      "github_advisory_id": "GHSA-w5vr-8v7q-w6rv",
+      "url": "https://github.com/advisories/GHSA-w5vr-8v7q-w6rv"
+    },
+    "1240992": {
+      "findings": [
+        {
+          "version": "3.0.3",
+          "paths": [
+            ".>tailwindcss>chokidar>braces",
+            ".>tailwindcss>fast-glob>micromatch>braces",
+            ".>tailwindcss>micromatch>braces"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1240992,
+      "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns",
+      "module_name": "braces",
+      "vulnerable_versions": "<=3.0.3",
+      "patched_versions": null,
+      "severity": "high",
+      "cwe": "CWE-674",
+      "github_advisory_id": "GHSA-vfj7-8cjw-p6xm",
+      "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+      "patched_versions_unpublished": true
+    },
+    "1241209": {
+      "findings": [
+        {
+          "version": "1.2.1",
+          "paths": [
+            ".>@vitejs/plugin-react>vite>postcss>source-map-js",
+            ".>autoprefixer>postcss>source-map-js",
+            ".>postcss>source-map-js",
+            ".>tailwindcss>postcss>source-map-js",
+            ".>tailwindcss>postcss-import>postcss>source-map-js",
+            ".>tailwindcss>postcss-js>postcss>source-map-js",
+            ".>tailwindcss>postcss-load-config>postcss>source-map-js",
+            ".>tailwindcss>postcss-nested>postcss>source-map-js",
+            ".>vite>postcss>source-map-js"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1241209,
+      "title": "source-map-js allows event-loop denial of service through indexed source-map section offsets",
+      "module_name": "source-map-js",
+      "vulnerable_versions": ">=1.0.0 <1.2.2",
+      "patched_versions": ">=1.2.2",
+      "severity": "high",
+      "cwe": "CWE-1284",
+      "github_advisory_id": "GHSA-68fv-2mgg-jv7q",
+      "url": "https://github.com/advisories/GHSA-68fv-2mgg-jv7q"
+    },
+    "1241232": {
+      "findings": [
+        {
+          "version": "6.1.4",
+          "paths": [
+            ".>tailwindcss>postcss-nested>postcss-selector-parser",
+            ".>tailwindcss>postcss-selector-parser"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1241232,
+      "title": "PostCSS: Quadratic complexity in flat selector parsing allows CPU exhaustion",
+      "module_name": "postcss-selector-parser",
+      "vulnerable_versions": "<7.1.6",
+      "patched_versions": ">=7.1.6",
+      "severity": "moderate",
+      "cwe": "CWE-400, CWE-407",
+      "github_advisory_id": "GHSA-rj75-hqrm-r3gf",
+      "url": "https://github.com/advisories/GHSA-rj75-hqrm-r3gf"
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 3,
+      "high": 9,
+      "critical": 0
+    },
+    "dependencies": 50,
+    "devDependencies": 189,
+    "optionalDependencies": 52,
+    "totalDependencies": 239
+  }
+}

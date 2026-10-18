@@ -1,0 +1,143 @@
+.guide-page { --guide-ink:#594c65; --guide-muted:#8b7d97; --guide-line:#e8deee; --guide-purple:#9477a8; position:relative; z-index:10; width:100%; max-width:1140px; margin:0 auto; padding:10px 0 32px; color:var(--guide-ink); }
+.guide-page a { transition:background-color .18s,color .18s,border-color .18s; }
+.guide-page a:focus-visible { outline:3px solid #b79dca; outline-offset:4px; }
+.guide-topbar { display:flex; justify-content:space-between; align-items:center; gap:16px; }
+.guide-back { display:inline-flex; align-items:center; gap:7px; color:var(--guide-muted); font-size:12px; }
+.guide-back:hover { color:#7b5892; }
+.guide-version { display:flex; align-items:center; gap:6px; color:#a090ad; font-size:10px; }
+.guide-version > span { height:5px; width:5px; border-radius:50%; background:#a1b5a7; }
+.guide-hero { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:45px; align-items:center; padding:42px 10px 40px; }
+.guide-eyebrow { display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:2px; font-weight:500; color:#997eaa; }
+.guide-hero h1 { margin-top:13px; font-size:clamp(30px,3vw,39px); line-height:1.5; font-weight:600; letter-spacing:-1px; }
+.guide-hero h1 > span { color:#ba9dcd; }
+.guide-hero-title { margin:15px 0; font-size:25px; font-weight:500; line-height:1.7; letter-spacing:.2px; }
+.guide-hero-title > span { color:#a088b1; }
+.guide-intro { max-width:410px; font-size:12px; line-height:2; color:#91829c; }
+.guide-primary { display:inline-flex; align-items:center; justify-content:center; gap:15px; padding:12px 17px; border:1px solid #9174a6; border-radius:10px; background:#9678ab; color:white; font-size:12px; font-weight:500; flex-shrink:0; }
+.guide-primary:hover { background:#836395; border-color:#836395; }
+.guide-hero-copy > .guide-primary { margin-top:24px; }
+.guide-hero-art { position:relative; display:grid; place-items:center; min-height:310px; isolation:isolate; }
+.guide-orbit { position:absolute; top:50%; left:50%; border:1px solid #dcd0e860; border-radius:50%; transform:translate(-50%,-50%); z-index:-1; }
+.guide-orbit-outer { width:330px; height:330px; }
+.guide-orbit-inner { width:255px; height:255px; background:radial-gradient(circle,#eee4f5aa,transparent 72%); }
+.guide-notebook { width:270px; padding:24px; border:1px solid #e2d5ec; border-radius:18px; background:linear-gradient(145deg,#fffdfE,#fbf7fe); box-shadow:10px 16px 0 -6px #e9dff173,0 16px 30px #9279a00b; transform:rotate(-5deg); }
+.guide-notebook-heading { display:flex; align-items:center; gap:7px; font-size:8px; letter-spacing:1.6px; color:#b197c0; }
+.guide-notebook-heading > span { width:5px; height:5px; border-radius:50%; background:#bda3cd; }
+.guide-notebook-title { font-size:15px; font-weight:500; margin:18px 0 20px; color:#8a6e9b; }
+.guide-notebook-line { display:flex; align-items:center; gap:10px; margin:16px 0; color:#a18aac; font-size:11px; }
+.guide-notebook-line > span:first-child { display:grid; place-items:center; width:17px; height:17px; border:1px solid #d5c4e1; border-radius:5px; flex-shrink:0; }
+.guide-notebook-line:not(:last-of-type) > span:first-child { background:#ede3f4; }
+.guide-notebook-line i { width:40px; height:3px; border-radius:10px; background:#eee7f3; margin-left:auto; }
+.guide-notebook-footer { display:flex; align-items:center; gap:6px; border-top:1px solid #eee5f3; padding-top:16px; margin-top:22px; color:#b49dc1; font-size:7px; letter-spacing:.6px; }
+.guide-art-spark { position:absolute; top:12px; right:75px; color:#b99ccc; transform:rotate(10deg); }
+.guide-art-goal { position:absolute; left:42px; bottom:32px; display:grid; place-items:center; width:45px; height:45px; border:1px solid #e3d7eb; border-radius:13px; background:#fcf9fe; color:#a58ab7; transform:rotate(8deg); }
+.guide-art-caption { position:absolute; bottom:-24px; font-size:8px; letter-spacing:2px; color:#b09abe; }
+.guide-quickstart { margin:18px 0 36px; padding:23px 25px; border:1px solid var(--guide-line); border-radius:20px; background:#fffdfEd9; }
+.guide-quickstart-heading { display:flex; align-items:center; gap:16px; padding-bottom:18px; }
+.guide-small-label { color:#a98dbb; font-size:9px; font-weight:500; letter-spacing:1.1px; }
+.guide-quickstart-heading h2 { font-size:14px; font-weight:500; }
+.guide-steps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px; }
+.guide-step { position:relative; display:flex; align-items:center; gap:12px; padding:15px 0 6px; border-top:1px solid #ede5f2; min-width:0; }
+.guide-step-number { position:absolute; right:1px; top:-7px; padding-left:6px; background:#fffdfE; color:#bca7c9; font-size:9px; font-variant-numeric:tabular-nums; }
+.guide-step-icon { flex-shrink:0; display:grid; place-items:center; width:39px; height:39px; border-radius:12px; background:#f4edf9; color:#a184b4; }
+.guide-step-copy { display:grid; gap:6px; min-width:0; }
+.guide-step strong { font-size:12px; font-weight:500; }
+.guide-step small { font-size:10px; color:#9e8cab; line-height:1.7; }
+.guide-step > svg { margin-left:auto; flex-shrink:0; color:#b59cc5; }
+.guide-step:hover strong { color:#a176b9; }
+.guide-layout { display:grid; grid-template-columns:230px minmax(0,1fr); align-items:start; gap:28px; }
+.guide-sidebar { position:sticky; top:120px; min-width:0; }
+.guide-toc { padding:18px 12px 12px; border:1px solid var(--guide-line); border-radius:18px; background:#fffdfE; }
+.guide-toc-heading { display:flex; align-items:center; gap:8px; padding:0 10px 16px; margin-bottom:7px; border-bottom:1px solid #eee6f3; color:#8c719e; font-size:12px; }
+.guide-toc-heading small { margin-left:auto; color:#baa4c8; font-size:9px; letter-spacing:1px; }
+.guide-toc a { display:flex; align-items:center; gap:10px; margin:3px 0; padding:12px 10px; border:1px solid transparent; border-radius:10px; font-size:11px; color:#9a88a6; }
+.guide-toc-number { color:#bba6c9; font-size:9px; font-variant-numeric:tabular-nums; }
+.guide-toc a > svg { margin-left:auto; color:#b49ac4; opacity:0; }
+.guide-toc a[aria-current="location"] { border-color:#e4d6ed; background:#f6effb; color:#876499; }
+.guide-toc a[aria-current="location"] > svg { opacity:1; }
+.guide-toc a:hover { background:#f8f3fc; color:#876499; }
+.guide-local-note { display:grid; gap:11px; padding:23px 15px; color:#a48aB4; }
+.guide-local-note strong { color:#90779f; font-size:12px; font-weight:500; }
+.guide-local-note p { font-size:11px; line-height:1.9; color:#9f8baa; }
+.guide-chapters { min-width:0; display:grid; gap:17px; }
+.guide-content-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:3px 2px 7px; }
+.guide-content-heading h2 { font-size:17px; font-weight:500; }
+.guide-content-heading > span { font-size:10px; color:#a18bad; }
+.guide-chapter { padding:27px 29px; border:1px solid var(--guide-line); border-radius:20px; background:#fffdfE; scroll-margin-top:120px; box-shadow:0 5px 18px #70568003; }
+.guide-chapter-heading { display:flex; align-items:center; gap:13px; margin-bottom:17px; }
+.guide-chapter-icon { flex-shrink:0; display:grid; place-items:center; width:44px; height:44px; border:1px solid #e9def1; border-radius:13px; background:#f7f1fb; color:#a285b4; }
+.guide-chapter-heading h3 { margin-top:6px; color:#665272; font-size:17px; font-weight:500; line-height:1.6; }
+.guide-chapter-number { color:#c0afcb; }
+.guide-chapter-large-number { align-self:flex-start; margin-left:auto; font-size:24px; font-weight:400; color:#e4d9ec; font-variant-numeric:tabular-nums; line-height:1.4; }
+.guide-chapter-body { font-size:13px; color:#8b7a97; line-height:2.1; overflow-wrap:anywhere; }
+.guide-text-link { display:inline-flex; align-items:center; gap:7px; margin-top:18px; color:#9672ac; font-size:11px; }
+.guide-text-link:hover { color:#6d4485; }
+.guide-chapter-timer { background:linear-gradient(135deg,#fffdfE,#faf5fe); border-color:#e4d6ef; }
+.guide-timer-modes { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:21px; }
+.guide-timer-modes > div { display:grid; grid-template-columns:7px minmax(0,1fr); align-items:center; gap:8px; padding:13px 12px; border:1px solid #e6daef; border-radius:11px; background:#ffffffaa; }
+.guide-timer-modes > div > span { width:5px; height:5px; border-radius:50%; background:#bca2cf; }
+.guide-timer-modes strong { font-size:11px; font-weight:500; color:#9272a4; }
+.guide-timer-modes small { grid-column:1 / -1; font-size:9px; color:#a08bad; line-height:1.7; }
+.guide-sync-note { display:flex; align-items:center; gap:9px; padding:13px 15px; margin-top:18px; border:1px solid #e5d9ee; border-radius:10px; background:#f8f3fc; color:#9a7aab; font-size:11px; line-height:1.9; }
+.guide-sync-note svg { flex-shrink:0; }
+.guide-data-note { padding:11px 14px; margin-top:17px; border-left:2px solid #d8b5c2; border-radius:0 8px 8px 0; background:#fff7fa; color:#b08998; font-size:11px; line-height:1.9; }
+.guide-bottom-cta { display:flex; align-items:center; gap:15px; padding:25px; border:1px solid #e0d2eb; border-radius:20px; background:linear-gradient(120deg,#f8f2fc,#f2e9f8); }
+.guide-cta-icon { display:grid; place-items:center; width:44px; height:44px; flex-shrink:0; border-radius:14px; background:#fffafebb; color:#af8ac5; }
+.guide-bottom-cta h2 { font-size:15px; font-weight:500; color:#876898; line-height:1.7; }
+.guide-bottom-cta p { margin-top:6px; font-size:10px; color:#a08aae; line-height:1.8; }
+.guide-bottom-cta .guide-primary { margin-left:auto; font-size:11px; }
+.guide-footer { display:flex; align-items:center; justify-content:center; gap:13px; padding:32px 0 0; color:#b09bbd; font-size:8px; letter-spacing:1.5px; }
+.guide-footer > span { height:1px; width:20px; background:#d7c8e0; }
+@media (max-width:1000px) {
+  .guide-hero { gap:15px; }
+  .guide-steps { gap:14px; }
+  .guide-step { gap:8px; }
+  .guide-step > svg { display:none; }
+  .guide-layout { grid-template-columns:200px minmax(0,1fr); gap:20px; }
+  .guide-chapter { padding:24px; }
+  .guide-bottom-cta { flex-wrap:wrap; }
+  .guide-bottom-cta .guide-primary { margin-left:59px; }
+  .guide-timer-modes { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (max-width:760px) {
+  .guide-hero { padding:30px 0; grid-template-columns:minmax(0,1fr); }
+  .guide-hero-copy { position:relative; z-index:1; }
+  .guide-hero-title { font-size:23px; }
+  .guide-intro { max-width:480px; }
+  .guide-hero-art { display:none; }
+  .guide-quickstart { margin:0 0 25px; padding:20px; }
+  .guide-quickstart-heading { flex-direction:column; align-items:flex-start; gap:8px; }
+  .guide-steps { grid-template-columns:minmax(0,1fr); gap:12px; }
+  .guide-step { padding-top:14px; gap:12px; }
+  .guide-step > svg { display:block; }
+  .guide-layout { grid-template-columns:minmax(0,1fr); gap:23px; }
+  .guide-sidebar { position:static; }
+  .guide-toc { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:3px; padding:17px 12px 12px; }
+  .guide-toc-heading { grid-column:1 / -1; }
+  .guide-toc a { padding:10px 8px; margin:0; gap:7px; }
+  .guide-toc a > svg { display:none; }
+  .guide-local-note { display:none; }
+  .guide-content-heading { flex-wrap:wrap; gap:8px; }
+  .guide-chapter { padding:23px 20px; }
+  .guide-chapter-heading { gap:10px; }
+  .guide-chapter-heading h3 { font-size:16px; }
+  .guide-chapter-icon { width:38px; height:38px; border-radius:11px; }
+  .guide-chapter-large-number { font-size:18px; }
+  .guide-chapter-body { font-size:12px; }
+  .guide-bottom-cta { padding:22px; }
+  .guide-bottom-cta > div { flex:1; min-width:0; }
+  .guide-bottom-cta .guide-primary { margin:3px 0 0; width:100%; }
+}
+@media (prefers-reduced-motion:no-preference) {
+  html:has(.guide-page) { scroll-behavior:smooth; }
+}
+@media (max-width:380px) {
+  .guide-toc a { font-size:10px; }
+  .guide-chapter { padding:20px 16px; }
+  .guide-chapter-large-number { display:none; }
+  .guide-footer { font-size:7px; letter-spacing:1px; gap:8px; }
+}
+/* A contained, calm backdrop keeps the reading page clear at every width. */
+.guide-shell > .animate-blob { display:none; }
+.guide-shell::before { content:''; position:fixed; inset:0; pointer-events:none; background:radial-gradient(ellipse at 8% 8%,#eee6f580,transparent 55%),radial-gradient(ellipse at 95% 85%,#f0e8f970,transparent 55%); }
+.guide-shell { overflow-x:clip; }

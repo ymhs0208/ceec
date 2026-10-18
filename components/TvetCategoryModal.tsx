@@ -1,3 +1,4 @@
+import ModalLayer from './ModalLayer';
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Search } from 'lucide-react';
@@ -20,7 +21,7 @@ export const TvetCategoryModal: React.FC<TvetCategoryModalProps> = ({ isOpen, on
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <ModalLayer className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -97,7 +98,7 @@ export const TvetCategoryModal: React.FC<TvetCategoryModalProps> = ({ isOpen, on
               </div>
             </div>
           </motion.div>
-        </div>
+        </ModalLayer>
       )}
     </AnimatePresence>
   );

@@ -1,3 +1,6 @@
+-- Run this entire file so the snapshot table and its RPC are installed together.
+begin;
+
 create table if not exists public.team_ranking_snapshots (
   snapshot_date date not null,
   team text not null,
@@ -163,3 +166,5 @@ $$;
 
 revoke all on function public.get_rankings(text) from public;
 grant execute on function public.get_rankings(text) to anon, authenticated;
+
+commit;

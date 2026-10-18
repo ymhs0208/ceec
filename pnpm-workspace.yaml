@@ -2,6 +2,11 @@ packages:
   - '.'
 
 allowBuilds:
-  '@google/genai': true
   esbuild: true
-  protobufjs: true
+
+# Tailwind 3 consumers use the compatible parser API; 6.x has no security fix.
+overrides:
+  postcss-selector-parser: 7.1.6
+
+patchedDependencies:
+  braces@3.0.3: patches/braces@3.0.3.patch

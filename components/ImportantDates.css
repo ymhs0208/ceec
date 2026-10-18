@@ -1,0 +1,71 @@
+.dates-panel { display:flex; flex-direction:column; height:100%; min-height:400px; min-width:0; overflow:hidden; border:1px solid #e5dfec; border-radius:24px; background:#fffefb; color:#63546f; }
+.dates-header { display:flex; justify-content:space-between; align-items:center; flex-shrink:0; gap:14px; padding:24px 24px 19px; }
+.dates-eyebrow { display:flex; align-items:center; gap:6px; margin:0; font-size:8px; font-weight:600; letter-spacing:1.5px; color:#a492b4; }
+.dates-header h3 { margin:8px 0 5px; font-size:20px; line-height:1.5; font-weight:750; color:#4c4057; }
+.dates-subtitle { margin:0; font-size:11px; line-height:1.7; color:#a295ab; }
+.dates-add-toggle { display:flex; align-items:center; justify-content:center; flex-shrink:0; gap:5px; min-width:62px; min-height:40px; padding:9px 10px; border:1px solid #e5dbee; border-radius:11px; background:#f6f0fa; color:#a086b2; font-size:10px; transition:background .2s; }
+.dates-add-toggle:hover { background:#ede4f5; }
+.dates-scroll { flex:1; min-height:0; padding:0 24px 20px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#e1d6eb transparent; scroll-padding:16px; }
+.dates-section-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:0 0 11px; color:#a08eac; font-size:10px; }
+.dates-section-heading > span { display:flex; align-items:center; gap:6px; }
+.dates-section-heading i { width:5px; height:5px; border-radius:50%; background:#b8a1cd; box-shadow:0 0 0 3px #f4eef8; }
+.dates-section-heading small { color:#b8aabe; font-size:9px; }
+.dates-feature { position:relative; display:flex; justify-content:space-between; align-items:center; gap:15px; overflow:hidden; margin-bottom:10px; padding:17px; border:1px solid #e8dfee; border-radius:15px; background:linear-gradient(115deg,#f6f0fb,#faf7fc); }
+.dates-feature::after { content:''; position:absolute; width:100px; height:100px; right:-38px; top:-46px; border:1px solid #ccb6df33; border-radius:50%; box-shadow:0 0 0 14px #ccb6df0c; pointer-events:none; }
+.dates-feature--personal { border-color:#e6e1ec; background:linear-gradient(115deg,#faf6f0,#fcf9f5); }
+.dates-feature-copy { min-width:0; position:relative; }
+.dates-type { display:flex; align-items:center; gap:5px; color:#a28bb3; font-size:8px; letter-spacing:.5px; }
+.dates-feature h4 { margin:8px 0 5px; font-size:14px; line-height:1.7; font-weight:650; color:#826796; overflow-wrap:anywhere; }
+.dates-feature-copy > p { margin:0; color:#af9dbc; font-size:10px; line-height:1.8; overflow-wrap:anywhere; }
+.dates-feature--personal .dates-type,.dates-feature--personal .dates-feature-copy > p { color:#b29e85; }
+.dates-feature--personal h4 { color:#9c8569; }
+.dates-countdown { position:relative; flex-shrink:0; text-align:right; color:#a18bb3; }
+.dates-countdown > span { font-size:8px; letter-spacing:.5px; }
+.dates-countdown > div { display:flex; align-items:baseline; justify-content:flex-end; gap:5px; margin-top:7px; }
+.dates-countdown .text-4xl { color:#a18ab7; font-size:30px; line-height:1; font-weight:500; letter-spacing:-1px; font-variant-numeric:tabular-nums; }
+.dates-countdown small { font-size:9px; }
+.dates-feature--personal .dates-countdown,.dates-feature--personal .text-4xl { color:#b0987c; }
+.dates-personal { margin-top:22px; }
+.dates-timeline { display:flex; flex-direction:column; }
+.dates-timeline-item { position:relative; display:flex; align-items:center; gap:12px; min-width:0; padding:12px 0; border-bottom:1px solid #f0eaf4; }
+.dates-timeline-item:last-child { border-bottom:0; }
+.dates-date-tile { display:flex; align-items:center; justify-content:center; flex-direction:column; flex-shrink:0; width:45px; height:52px; border:1px solid #e9dfef; border-radius:10px; background:#f7f2fb; color:#ad97bf; }
+.dates-date-tile > span { font-size:8px; line-height:1.5; }
+.dates-date-tile strong { margin-top:2px; font-size:21px; font-weight:500; line-height:1.2; font-variant-numeric:tabular-nums; }
+.dates-item-copy { min-width:0; flex:1; }
+.dates-item-copy h4 { margin:0; color:#8a7897; font-size:12px; font-weight:550; line-height:1.7; overflow-wrap:anywhere; }
+.dates-item-copy p { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:5px 0 0; }
+.dates-item-copy p > span { color:#af9cbc; font-size:9px; }
+.dates-item-copy small { color:#c2b6ca; font-size:8px; }
+.dates-timeline-item[data-today=true] .dates-item-copy p > span { color:#b28c64; }
+.dates-timeline-item[data-today=true] .dates-date-tile { background:#fbf4e9; border-color:#eddfc8; color:#b69b76; }
+.dates-timeline-item[data-past=true] .dates-date-tile { background:#f7f6f8; border-color:#eeebf1; color:#bcb2c3; }
+.dates-timeline-item[data-past=true] h4,.dates-timeline-item[data-past=true] .dates-item-copy p > span { color:#beb3c6; }
+.dates-delete { display:grid; place-items:center; flex-shrink:0; width:36px; height:42px; border-radius:8px; color:#c7bbd0; transition:color .2s,background .2s; }
+.dates-delete:hover { color:#bc8383; background:#faeeee; }
+.dates-empty { display:flex; flex-direction:column; align-items:center; padding:20px 10px 12px; text-align:center; }
+.dates-empty > span { position:relative; display:grid; place-items:center; width:48px; height:48px; margin-bottom:13px; border:1px solid #e9e0ef; border-radius:14px; color:#bba5cd; background:#f8f3fc; transform:rotate(-6deg); }
+.dates-empty i { position:absolute; right:-3px; bottom:1px; width:10px; height:10px; border:2px solid #fffefb; border-radius:50%; background:#cbb4dc; }
+.dates-empty strong { color:#ae99bd; font-size:11px; font-weight:500; }
+.dates-empty p { margin:6px 0 0; color:#beb0c8; font-size:10px; line-height:1.9; }
+.dates-empty button { display:flex; align-items:center; justify-content:center; gap:5px; min-height:40px; margin-top:9px; color:#a890ba; font-size:10px; }
+.dates-official-link { display:flex; flex-shrink:0; align-items:center; gap:11px; width:100%; padding:17px 24px; border-top:1px solid #ece4f2; background:#faf7fc; text-align:left; }
+.dates-official-icon { display:grid; place-items:center; flex-shrink:0; width:35px; height:35px; border:1px solid #e9dfef; border-radius:10px; background:#f1e9f8; color:#b19bc4; }
+.dates-official-link > span:nth-child(2) { display:flex; flex-direction:column; gap:5px; flex:1; min-width:0; }
+.dates-official-link strong { color:#9c86af; font-size:11px; font-weight:600; }
+.dates-official-link small { color:#b9a9c6; font-size:9px; line-height:1.6; }
+.dates-official-link > svg { color:#b49ec7; flex-shrink:0; }
+.dates-official-link:hover { background:#f3ecf8; }
+.dates-panel button:focus-visible { outline:2px solid #b49ac9; outline-offset:2px; }
+.dates-composer { margin:0 0 20px; padding:15px; border:1px solid #e8ddef; border-radius:15px; background:#faf6fd; }
+.dates-composer-heading { display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:13px; color:#a48cb5; font-size:11px; }
+.dates-composer-heading small { color:#bfaecb; font-size:9px; }
+.dates-composer label { display:flex; min-width:0; flex-direction:column; gap:7px; color:#ac99b9; font-size:9px; }
+.dates-composer input { display:block; width:100%; min-width:0; max-width:100%; min-height:41px; padding:10px; border:1px solid #e5daee; border-radius:9px; background:#fffefd; color:#9985a8; font-family:inherit; font-size:11px; outline:none; color-scheme:light; }
+.dates-composer input::placeholder { color:#c3b6cd; }
+.dates-composer input:focus { border-color:#b9a0ce; box-shadow:0 0 0 3px #d6c4e622; }
+.dates-composer-bottom { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:9px; align-items:end; margin-top:12px; }
+.dates-composer-bottom button { display:flex; justify-content:center; align-items:center; gap:4px; min-height:41px; padding:10px 13px; border:1px solid #e1d3eb; border-radius:9px; background:#ece1f5; color:#a083b3; font-size:11px; }
+.dates-composer-bottom button:disabled { opacity:.5; cursor:not-allowed; }
+@media(max-width:600px) { .dates-header { padding:20px 18px 18px; gap:10px; }.dates-header h3 { font-size:18px; }.dates-subtitle { font-size:10px; }.dates-scroll { padding-inline:18px; }.dates-feature { padding:14px; gap:11px; }.dates-feature h4 { font-size:13px; }.dates-countdown .text-4xl { font-size:28px; }.dates-official-link { padding:15px 18px; }.dates-composer { padding:12px; }.dates-feature-copy > p { font-size:9px; } }
+@media(prefers-reduced-motion:reduce) { .dates-panel * { transition:none !important; } }

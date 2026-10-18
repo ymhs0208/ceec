@@ -1,0 +1,121 @@
+.focus-music-overlay { display:flex; align-items:center; justify-content:center; padding:20px; background:#30243878; backdrop-filter:blur(8px); }
+.focus-music-panel, .focus-music-subdialog { color:#614b70; background:#fffdfE; border:1px solid #e9dfef; border-radius:26px; box-shadow:0 24px 90px #23132f40; overflow:hidden; }
+.focus-music-panel { width:100%; max-width:880px; max-height:calc(100dvh - 40px); display:flex; flex-direction:column; }
+.focus-music-header { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; padding:23px 28px; border-bottom:1px solid #eee5f2; background:linear-gradient(110deg,#f7f1fb,#fffdfE); flex-shrink:0; }
+.focus-music-eyebrow { display:flex; align-items:center; gap:7px; color:#9b80ab; font-size:9px; font-weight:600; letter-spacing:1.7px; }
+.focus-music-header h2 { margin:9px 0 7px; font-size:24px; font-weight:600; letter-spacing:-.5px; }
+.focus-music-header p { font-size:11px; line-height:1.7; color:#907b9b; }
+.focus-music-icon { width:34px; height:34px; display:grid; place-items:center; flex-shrink:0; border-radius:50%; border:1px solid #e9dfef; background:#fffafE; color:#9579a5; }
+.focus-music-icon:hover { background:#eee3f5; }
+.focus-music-layout { display:grid; grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr); min-height:0; overflow-y:auto; }
+.focus-music-console { padding:25px 28px; background:#fcf8fe; }
+.focus-music-cover { position:relative; width:100%; height:165px; overflow:hidden; border-radius:16px; background:#e9deef; display:grid; place-items:center; }
+.focus-music-cover > img { width:100%; height:100%; object-fit:cover; }
+.focus-music-cover > svg { width:42px; height:42px; color:#b598c7; }
+.focus-music-cover > span { position:absolute; bottom:12px; left:12px; background:#fffdfEe6; padding:5px 8px; border-radius:5px; color:#80628f; font-size:8px; letter-spacing:1.5px; }
+.focus-music-track-info { margin-top:20px; text-align:center; }
+.focus-music-track-info p { font-size:10px; color:#a184b2; }
+.focus-music-track-info h3 { margin:7px 0; font-size:18px; font-weight:600; line-height:1.5; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
+.focus-music-track-info > span { font-size:10px; color:#9a879f; }
+.focus-music-controls { display:flex; align-items:center; justify-content:center; gap:22px; margin:21px 0; }
+.focus-music-controls .focus-music-icon { border:0; background:transparent; }
+.focus-music-play { display:grid; place-items:center; width:54px; height:54px; border-radius:50%; color:white; background:#9876ad; box-shadow:0 6px 18px #a98abd30; }
+.focus-music-play:hover { background:#856299; }
+.focus-music-volume { display:flex; align-items:center; gap:11px; color:#9c85a9; }
+.focus-music-volume button { display:grid; place-items:center; flex-shrink:0; }
+.focus-music-volume input { width:100%; min-width:0; height:4px; border-radius:8px; appearance:none; cursor:pointer; accent-color:#9b7aaf; }
+.focus-music-volume input::-webkit-slider-thumb { appearance:none; height:12px; width:12px; border-radius:50%; background:#9b7aaf; }
+.focus-music-volume > span { font-size:9px; width:28px; text-align:right; flex-shrink:0; font-variant-numeric:tabular-nums; }
+.focus-music-mode { display:flex; align-items:center; gap:7px; width:100%; margin-top:19px; border-top:1px solid #eae0f0; padding-top:14px; font-size:10px; color:#977ea6; }
+.focus-music-mode > span { margin-left:auto; font-size:9px; color:#b3a0bd; }
+.focus-music-library { min-height:0; min-width:0; display:flex; flex-direction:column; border-left:1px solid #eee4f3; padding:25px 23px 16px; }
+.focus-music-library-header { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:17px; }
+.focus-music-library-header h3 { margin-top:7px; font-size:16px; font-weight:600; }
+.focus-music-library-header h3 small { margin-left:6px; font-size:10px; font-weight:400; color:#ac96b8; }
+.focus-music-add { display:flex; align-items:center; gap:4px; font-size:10px; padding:8px 10px; border-radius:8px; background:#f4edf8; color:#9773a9; white-space:nowrap; }
+.focus-music-playlist-trigger { display:flex; align-items:center; gap:10px; text-align:left; padding:11px 13px; border:1px solid #e8deee; border-radius:11px; margin-bottom:14px; color:#997ba9; }
+.focus-music-playlist-trigger > span { display:flex; flex-direction:column; gap:3px; min-width:0; flex:1; }
+.focus-music-playlist-trigger small { font-size:8px; color:#b49dbe; }
+.focus-music-playlist-trigger strong { font-size:11px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.focus-music-tracks { flex:1; min-height:120px; overflow-y:auto; overscroll-behavior:contain; }
+.focus-music-row { display:flex; align-items:center; gap:3px; border:1px solid transparent; border-radius:12px; margin-bottom:5px; }
+.focus-music-row[data-active="true"] { background:#f5eef9; border-color:#e6d8ef; }
+.focus-music-row:hover { background:#faf6fc; }
+.focus-music-track-button { display:flex; align-items:center; gap:10px; min-width:0; flex:1; padding:10px 8px; text-align:left; }
+.focus-music-number { width:17px; flex-shrink:0; font-size:9px; text-align:center; color:#b298c1; }
+.focus-music-thumb { width:38px; height:38px; border-radius:8px; background:#e9dfef; overflow:hidden; display:grid; place-items:center; flex-shrink:0; }
+.focus-music-thumb img { width:100%; height:100%; object-fit:cover; }
+.focus-music-thumb svg { width:17px; }
+.focus-music-row-copy { display:flex; flex-direction:column; gap:5px; min-width:0; flex:1; }
+.focus-music-row-copy strong { font-size:11px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.focus-music-row-copy small { font-size:8px; color:#ac95b8; }
+.focus-music-delete { display:grid; place-items:center; width:29px; height:32px; color:#b7a2c2; flex-shrink:0; border-radius:8px; margin-right:4px; }
+.focus-music-delete:hover { background:#fff0f0; color:#bf778c; }
+.focus-music-library-note { padding:13px 0 0; font-size:9px; text-align:center; color:#b7a3c1; }
+.focus-music-empty { min-height:170px; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:14px; text-align:center; color:#b79fc3; padding:20px; }
+.focus-music-empty strong { font-size:12px; font-weight:500; color:#9374a4; }
+.focus-music-empty p { font-size:10px; line-height:1.8; }
+.focus-music-subdialog { width:100%; max-width:430px; max-height:calc(100dvh - 40px); display:flex; flex-direction:column; }
+.focus-music-subdialog header { display:flex; justify-content:space-between; align-items:center; padding:22px 23px; background:#faf5fd; border-bottom:1px solid #ede3f3; flex-shrink:0; }
+.focus-music-subdialog h3 { font-size:18px; font-weight:600; margin-top:8px; }
+.focus-music-playlists { padding:17px; overflow-y:auto; min-height:0; }
+.focus-music-subdialog footer { padding:17px 23px; border-top:1px solid #ede4f2; }
+.focus-music-create { display:flex; align-items:center; justify-content:center; gap:7px; width:100%; font-size:12px; padding:12px; border:1px dashed #cbb5d7; border-radius:10px; color:#9776a9; }
+.focus-music-form { display:flex; flex-direction:column; gap:16px; }
+.focus-music-add-form { padding:22px 23px; overflow-y:auto; }
+.focus-music-form p { font-size:11px; color:#9d86aa; }
+.focus-music-form label { display:flex; flex-direction:column; gap:8px; font-size:11px; }
+.focus-music-form label small { font-size:9px; color:#ad96b8; }
+.focus-music-form input, .focus-music-form select { width:100%; padding:11px 12px; border:1px solid #e5d9ed; border-radius:9px; background:white; color:#80608e; font-size:12px; }
+.focus-music-form-actions { display:flex; justify-content:flex-end; gap:10px; }
+.focus-music-form-actions button { padding:10px 16px; border-radius:9px; font-size:11px; background:#f5eef8; color:#977ba6; }
+.focus-music-form-actions .focus-music-primary { background:#9977ac; color:white; }
+.focus-music-panel button:focus-visible, .focus-music-subdialog :is(button,input,select):focus-visible { outline:3px solid #c6a7d8; outline-offset:3px; }
+.focus-music-panel button:disabled, .focus-music-subdialog button:disabled { opacity:.45; cursor:not-allowed; }
+@media(max-width:640px) {
+  .focus-music-overlay { padding:12px; }
+  .focus-music-panel, .focus-music-subdialog { max-height:calc(100dvh - 24px); border-radius:22px; }
+  .focus-music-header { padding:19px 20px; }
+  .focus-music-header h2 { font-size:21px; }
+  .focus-music-layout { display:flex; flex-direction:column; }
+  .focus-music-console { padding:18px 20px; display:grid; grid-template-columns:72px minmax(0,1fr); gap:13px; flex-shrink:0; }
+  .focus-music-cover { width:72px; height:72px; border-radius:12px; }
+  .focus-music-cover > span { display:none; }
+  .focus-music-track-info { text-align:left; margin:0; align-self:center; }
+  .focus-music-track-info h3 { font-size:14px; margin:5px 0; }
+  .focus-music-track-info > span { display:none; }
+  .focus-music-controls { grid-column:1/-1; margin:0; gap:27px; }
+  .focus-music-play { width:44px; height:44px; }
+  .focus-music-volume { grid-column:1/-1; }
+  .focus-music-mode { grid-column:1/-1; margin:0; padding-top:10px; }
+  .focus-music-library { padding:18px 16px; border-left:0; border-top:1px solid #ede3f3; flex-shrink:0; }
+  .focus-music-tracks { max-height:none; overflow:visible; }
+  .focus-music-library-note { display:none; }
+  .focus-music-number { display:none; }
+  .focus-music-subdialog header { padding:20px; }
+}
+.focus-music-mini { --mini-cover-offset:59px; position:relative; width:100%; max-width:420px; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:5px 7px; padding:11px 12px; border:1px solid #e8ddec; border-radius:17px; background:#fffafef0; box-shadow:0 6px 22px #5937640a; color:#71577f; overflow:hidden; }
+.focus-music-mini-open { display:flex; align-items:center; gap:11px; text-align:left; flex:1; min-width:0; }
+.focus-music-mini-cover { position:relative; display:grid; place-items:center; flex-shrink:0; width:48px; height:48px; border-radius:11px; overflow:hidden; background:#e9dfef; }
+.focus-music-mini-cover img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.focus-music-mini-copy { min-width:0; flex:1; display:flex; flex-direction:column; gap:4px; }
+.focus-music-mini-copy small { display:flex; align-items:center; gap:5px; font-size:8px; letter-spacing:.6px; color:#a38ab0; }
+.focus-music-mini-copy small > span { width:4px; height:4px; border-radius:50%; background:#cbbbd5; }
+.focus-music-mini-copy small > .is-playing { background:#a383b8; }
+.focus-music-mini-copy strong { white-space:nowrap; text-overflow:ellipsis; overflow:hidden; font-size:11px; font-weight:500; }
+.focus-music-mini-copy > span { font-size:8px; color:#ac96b8; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; }
+.focus-music-mini-controls { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+.focus-music-mini-play { width:35px; height:35px; display:grid; place-items:center; border-radius:50%; background:#9c7eb0; color:white; }
+.focus-music-mini-next { width:27px; height:32px; display:grid; place-items:center; color:#a389b2; }
+.focus-music-mini button:focus-visible { outline:2px solid #b794cc; outline-offset:2px; border-radius:8px; }
+.focus-music-mini-controls { grid-column:2; grid-row:1; }
+.focus-music-mini-progress { grid-column:1 / -1; grid-row:2; position:relative; width:calc(100% - var(--mini-cover-offset)); min-width:0; height:24px; margin:-4px 0 -4px var(--mini-cover-offset); padding:0; border:0; appearance:none; -webkit-appearance:none; background:transparent; cursor:pointer; touch-action:pan-y; accent-color:#c8b2d8; }
+.focus-music-mini-progress::-webkit-slider-runnable-track { height:3px; border-radius:4px; background:linear-gradient(to right,#c8b2d8 var(--music-progress),#eee5f388 var(--music-progress)); }
+.focus-music-mini-progress::-webkit-slider-thumb { appearance:none; -webkit-appearance:none; width:10px; height:10px; margin-top:-3.5px; border:2px solid #fffafc; border-radius:50%; background:#b798ce; box-shadow:0 0 0 1px #d8c5e5; }
+.focus-music-mini-progress::-moz-range-track { height:3px; border-radius:4px; background:#eee5f388; }
+.focus-music-mini-progress::-moz-range-progress { height:3px; border-radius:4px; background:#c8b2d8; }
+.focus-music-mini-progress::-moz-range-thumb { width:7px; height:7px; border:2px solid #fffafc; border-radius:50%; background:#b798ce; box-shadow:0 0 0 1px #d8c5e5; }
+.focus-music-mini-progress:focus-visible { outline:2px solid #b794cc; outline-offset:2px; border-radius:5px; }
+.focus-music-mini--dark { background:#201b2ae0; border-color:#ffffff20; color:#f1e6f7; }
+.focus-music-mini--dark .focus-music-mini-copy small, .focus-music-mini--dark .focus-music-mini-copy > span { color:#c3accf; }
+.focus-music-mini--dark .focus-music-mini-play { background:#dcc8e8; color:#50365f; }

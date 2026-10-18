@@ -1,5 +1,8 @@
+import ModalLayer from './ModalLayer';
+import { buildAppRoute, readAppRoute } from '../utils/appRoutes';
 import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import './LoginSuggestionModal.css';
 import { X, Shield, Book, AlertTriangle, CheckCircle2, Info, Lock, Server, ExternalLink, Cloud, ArrowRight, Laptop, Smartphone, ClipboardCheck, Clock, MapPin, Sparkles, Check, Backpack, Ban, ScrollText, BookOpen, Target, Calendar, Trophy, Headphones, ListChecks, ArrowLeftRight, RefreshCw, Zap, CalendarClock } from 'lucide-react';
 
 interface ModalProps {
@@ -11,7 +14,7 @@ interface ModalProps {
 const ModalBase: React.FC<{ isOpen: boolean; onClose: () => void; children: React.ReactNode; title: string; icon: React.ReactNode }> = ({ isOpen, onClose, children, title, icon }) => {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+    <ModalLayer className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
       <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl relative border border-white/50 max-h-[90vh] flex flex-col animate-scale-in">
         {/* Header - Fixed */}
         <div className="flex justify-between items-center p-6 md:p-8 pb-4 flex-shrink-0 border-b border-transparent">
@@ -36,155 +39,23 @@ const ModalBase: React.FC<{ isOpen: boolean; onClose: () => void; children: Reac
            </button>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 };
 
-// 隱私權政策 Modal
+// Keep legacy modal entry points linked to the current full policy.
 export const PrivacyModal: React.FC<ModalProps> = (props) => (
-  <ModalBase {...props} title="隱私權政策" icon={<Shield className="w-5 h-5 text-indigo-500" />}>
-    <div className="space-y-6 pb-4">
-      <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100 text-indigo-900 text-xs font-medium leading-relaxed">
-        我們非常重視您的隱私權。本《隱私權政策》旨在說明 <strong>Focus Space 116 學測倒數</strong> 如何處理您的個人資訊。
-      </div>
-
-      <section className="space-y-3">
-        <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
-          <Book className="w-4 h-4 text-slate-400" /> 1. 資料收集詳述
-        </h3>
-        <div className="space-y-2 text-xs text-slate-600">
-          <p>
-            <strong>本地儲存模式：</strong> 預設情況下，您的所有待辦事項、倒數目標、讀書紀錄與設定皆儲存於您裝置的瀏覽器本地端 (LocalStorage)。我們無法存取，亦不會主動上傳這些資料。
-          </p>
-          <p>
-            <strong>雲端同步模式：</strong> 當您註冊帳號並登入後，我們將收集以下資料以提供同步服務：
-          </p>
-          <ul className="list-disc pl-5 space-y-1">
-            <li>電子郵件地址：用於帳號識別與身份驗證。</li>
-            <li>暱稱與戰隊資訊：用於排行榜顯示（若選擇加入英雄榜）。</li>
-            <li>加密的應用程式數據：包括任務、讀書紀錄與偏好設定，用於在不同裝置間維持一致的體驗。</li>
-          </ul>
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
-          <Lock className="w-4 h-4 text-slate-400" /> 2. 資訊安全與加密技術
-        </h3>
-        <div className="space-y-2 text-xs text-slate-600">
-          <p>我們採取多重安全措施來保護您的資料：</p>
-          <ul className="list-disc pl-5 space-y-1">
-            <li><strong>密碼保護：</strong> 您的密碼在傳輸前會進行雜湊處理，伺服器端僅儲存雜湊結果，任何形式的攻擊皆無法輕易取得您的原始密碼。</li>
-            <li><strong>端對端概念加密：</strong> 您的敏感學習內容（如任務說明、心得紀錄）在進入雲端前會進行本地加密，確保即使是系統維護者也無法讀取具體內容。</li>
-            <li><strong>傳輸安全：</strong> 所有網路傳輸接透過經授權的 HTTPS 加密通道進行。</li>
-          </ul>
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
-          <ExternalLink className="w-4 h-4 text-slate-400" /> 3. 第三方服務說明
-        </h3>
-        <p className="text-xs text-slate-600">
-          本平台可能結合以下第三方服務以提升體驗：
-        </p>
-        <ul className="list-disc pl-5 text-xs text-slate-500 space-y-1">
-          <li><strong>Google Sheets API：</strong> 做為同步數據之儲存介層。</li>
-          <li><strong>YouTube IFrame API：</strong> 提供專注白噪音播放功能。</li>
-          <li><strong>Google Gemini API：</strong> 用於產生學習激勵語錄與建議。</li>
-        </ul>
-        <p className="text-[10px] text-slate-400">
-          這些服務可能會有其獨立的隱私權政策，我們建議您同時參閱相關廠商之公告。
-        </p>
-      </section>
-
-      <section className="space-y-3">
-        <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-slate-400" /> 4. 使用者權利
-        </h3>
-        <p className="text-xs text-slate-600">
-          您可以隨時透過設定選單重置您的本地資料。若您擁有帳號，亦可透過「帳號管理」功能檢視、修改或刪除您的帳號與同步數據。
-        </p>
-      </section>
-
-      <div className="pt-4 border-t border-slate-100">
-        <p className="text-[10px] text-slate-400 text-center">
-          最後更新日期：2024 年 5 月 15 日<br/>
-          我們保留隨時修改本政策之權利，修改後將於應用程式內公告。
-        </p>
-      </div>
-    </div>
+  <ModalBase {...props} title="隱私權政策" icon={<Shield className="w-5 h-5 text-indigo-600" />}>
+    <p>請閱讀完整隱私權政策，了解本機儲存、帳號同步、公開排行、第三方服務，以及你的個人資料權利。</p>
+    <a className="inline-flex items-center gap-2 text-indigo-600" href={buildAppRoute('privacy', readAppRoute(new URL(window.location.href)).examId || '116gsat')}>閱讀完整政策 <ExternalLink className="h-4 w-4" /></a>
   </ModalBase>
 );
 
-// 使用者服務條款 Modal
+// Legacy entry points share the current full terms instead of a separate version.
 export const TermsModal: React.FC<ModalProps> = (props) => (
-  <ModalBase {...props} title="使用者服務條款" icon={<ScrollText className="w-5 h-5 text-indigo-500" />}>
-    <div className="space-y-6 pb-4">
-      <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100 text-indigo-900 text-xs font-medium leading-relaxed">
-        歡迎使用 <strong>Focus Space</strong>！本《使用者服務條款》（以下簡稱「本條款」）旨在規範您使用本服務的各項權利與義務。使用本服務即表示您同意本條款之所有內容。
-      </div>
-
-      <section className="space-y-3">
-        <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
-          <Book className="w-4 h-4 text-slate-400" /> 1. 服務內容與使用規範
-        </h3>
-        <div className="space-y-2 text-xs text-slate-600">
-          <p>
-            本服務提供考試倒數、專注計時、排行榜、學習數據統計等相關功能。
-            您同意在使用本服務時，遵守以下規範：
-          </p>
-          <ul className="list-disc pl-5 space-y-1">
-            <li>不會利用本服務進行任何非法或侵權行為。</li>
-            <li>不會試圖破解、破壞或干擾本系統的正常運作。</li>
-            <li>在排行榜或公開互動區域，不使用任何冒犯性、歧視性或不當字眼。</li>
-            <li>如有違反，我們保留隨時終止您帳號使用權之權利。</li>
-          </ul>
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
-          <Lock className="w-4 h-4 text-slate-400" /> 2. 帳號與安全性
-        </h3>
-        <div className="space-y-2 text-xs text-slate-600">
-          <p>
-            若您選擇註冊帳號以使用雲端同步功能，您有責任妥善保管您的帳號及密碼。
-            任何經由您的帳號所發生的活動，您須負完全責任。若發現帳號遭盜用或有任何安全漏洞，請立即通知我們。
-          </p>
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
-          <Target className="w-4 h-4 text-slate-400" /> 3. 服務變更與終止
-        </h3>
-        <div className="space-y-2 text-xs text-slate-600">
-          <p>
-            我們可能會持續不斷地改進系統，因此可能會隨時新增、修改或移除功能，甚至是暫停或終止本服務的某些部分，恕不另行個別通知。
-            對於不可抗力因素導致的服務中斷或資料遺失，我們將盡力協助恢復，但不承擔直接或間接之損害賠償責任。
-          </p>
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-slate-400" /> 4. 免責聲明
-        </h3>
-        <div className="space-y-2 text-xs text-slate-600">
-          <p>
-            本平台上顯示的考試倒數日期與其他考試相關資訊僅供參考，實際資訊請以各主辦單位或教育部所發布的官方公告為準。我們不保證所有資訊的絕對正確性與即時性。
-          </p>
-        </div>
-      </section>
-
-      <div className="pt-4 border-t border-slate-100">
-        <p className="text-[10px] text-slate-400 text-center">
-          發布日期：2024 年 6 月 1 日<br/>
-          我們保留隨時修改本條款之權利，修改後將於應用程式內相關頁面更新，請定期檢視。
-        </p>
-      </div>
-    </div>
+  <ModalBase {...props} title="服務條款" icon={<ScrollText className="w-5 h-5 text-indigo-500" />}>
+    <p>請閱讀完整服務條款，了解帳號、公開排行、虛擬金幣、自願支持、資料保存與申訴權益。</p>
+    <a className="inline-flex items-center gap-2 text-indigo-600" href={buildAppRoute('terms', readAppRoute(new URL(window.location.href)).examId || '116gsat')}>閱讀完整條款 <ExternalLink className="h-4 w-4" /></a>
   </ModalBase>
 );
 
@@ -294,7 +165,7 @@ export const InstructionsModal: React.FC<ModalProps> = (props) => (
 export const AnnouncementModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-fade-in">
+    <ModalLayer className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-fade-in">
       <div className="bg-white rounded-3xl w-full max-w-xl p-0 shadow-2xl relative overflow-hidden animate-scale-in border-2 border-rose-100 max-h-[90vh] flex flex-col">
         <div className="bg-rose-600 p-6 text-white text-center relative overflow-hidden flex-shrink-0">
             <div className="relative z-10 flex flex-col items-center gap-3">
@@ -352,7 +223,7 @@ export const AnnouncementModal: React.FC<ModalProps> = ({ isOpen, onClose }) => 
             </button>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 };
 
@@ -366,7 +237,7 @@ export const ScoreQueryModal: React.FC<{
 }> = ({ isOpen, onClose, onConfirm, examName, openTime }) => {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+    <ModalLayer className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
       <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl relative animate-scale-in border border-white/50">
         <div className="flex flex-col items-center gap-4 text-center">
            <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-500 flex items-center justify-center border border-amber-200 shadow-sm">
@@ -390,110 +261,60 @@ export const ScoreQueryModal: React.FC<{
            </div>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 };
 
 // 登入建議 Modal
 export const LoginSuggestionModal: React.FC<{ isOpen: boolean; onClose: () => void; onLogin: () => void }> = ({ isOpen, onClose, onLogin }) => {
+  const reduceMotion = useReducedMotion();
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <ModalLayer className="sync-invite-layer" onKeyDown={event => { if (event.key === 'Escape') onClose(); }}>
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
-            onClick={onClose}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="sync-invite-backdrop" onClick={onClose} aria-hidden="true"
           />
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative w-full max-w-[420px] bg-white rounded-[2rem] shadow-2xl flex flex-col pointer-events-auto max-h-[90vh] overflow-hidden"
+            initial={{ opacity: 0, y: reduceMotion ? 0 : 16, scale: reduceMotion ? 1 : 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: reduceMotion ? 0 : 8 }}
+            transition={{ duration: reduceMotion ? 0 : 0.2 }}
+            className="sync-invite" role="dialog" aria-modal="true" aria-labelledby="sync-invite-title" aria-describedby="sync-invite-description"
           >
-            {/* Glossy Header Area */}
-            <div className="relative pt-8 pb-6 px-6 flex flex-col items-center justify-center bg-slate-900 shrink-0 overflow-hidden">
-                {/* Modern Decorative Background */}
-                <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 via-slate-900 to-fuchsia-500/20" />
-                <div className="absolute top-[-20%] right-[-10%] w-64 h-64 bg-indigo-500/30 rounded-full blur-[60px]" />
-                <div className="absolute bottom-[-20%] left-[-10%] w-64 h-64 bg-fuchsia-500/20 rounded-full blur-[60px]" />
-                
-                {/* Animated Icon */}
-                <div className="relative z-10 flex flex-col items-center mt-2">
-                    <div className="relative flex items-center justify-center w-20 h-20 mb-4">
-                        <motion.div 
-                          animate={{ rotate: 360 }}
-                          transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-                          className="absolute inset-0 rounded-full border border-dashed border-indigo-400/30" 
-                        />
-                        <motion.div 
-                          animate={{ scale: [1, 1.1, 1], opacity: [0.5, 0.8, 0.5] }}
-                          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                          className="absolute inset-0 bg-indigo-500/20 rounded-full blur-xl" 
-                        />
-                        <div className="relative bg-gradient-to-br from-indigo-400 to-violet-600 w-14 h-14 rounded-2xl flex items-center justify-center shadow-2xl shadow-indigo-500/40 rotate-3 transition-transform hover:rotate-6">
-                            <RefreshCw className="w-7 h-7 text-white" />
-                        </div>
-                        
-                        <motion.div 
-                          initial={{ scale: 0, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          transition={{ delay: 0.2, type: "spring" }}
-                          className="absolute -right-2 -top-2 bg-gradient-to-r from-amber-400 to-orange-500 w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-slate-900 z-20"
-                        >
-                            <Zap className="w-4 h-4 text-white" fill="currentColor" />
-                        </motion.div>
-                    </div>
+            <button type="button" onClick={onClose} className="sync-invite-close" aria-label="關閉雲端同步提示"><X size={18} /></button>
+            <div className="sync-invite-body">
+              <p className="sync-invite-eyebrow"><span /> YOUR PROGRESS, CONNECTED</p>
+              <div className="sync-invite-illustration" aria-hidden="true">
+                <span className="sync-invite-device"><Laptop size={27} strokeWidth={1.4} /></span>
+                <span className="sync-invite-connection" />
+                <span className="sync-invite-cloud"><Cloud size={39} strokeWidth={1.3} /><span><Check size={12} strokeWidth={2.5} /></span></span>
+                <span className="sync-invite-connection" />
+                <span className="sync-invite-device"><Smartphone size={25} strokeWidth={1.4} /></span>
+              </div>
+              <header className="sync-invite-heading">
+                <h2 id="sync-invite-title">啟動雲端連線<span>。</span></h2>
+                <p id="sync-invite-description">讓每一份專注，都能隨身帶著走。<br />跨裝置接續您的學習進度。</p>
+              </header>
+              <div className="sync-invite-features">
+                <div className="sync-invite-feature">
+                  <span className="sync-invite-feature-icon"><ArrowLeftRight size={19} strokeWidth={1.6} /></span>
+                  <div><h3>跨裝置即時同步</h3><p>在手機、平板與電腦之間切換，接續您的專注與學習紀錄。</p></div>
                 </div>
-
-                <h3 className="text-xl font-black tracking-tight text-white text-center relative z-10">啟動雲端連線</h3>
-                <p className="text-indigo-200 text-xs font-medium text-center mt-1.5 relative z-10 max-w-[260px]">隨時隨地，跨裝置無縫接軌您的專注與學習進度。</p>
+                <div className="sync-invite-feature">
+                  <span className="sync-invite-feature-icon"><Shield size={19} strokeWidth={1.6} /></span>
+                  <div><h3>安全資料備份</h3><p>登入並連線後，將成就、任務與統計數據備份至雲端。</p></div>
+                </div>
+              </div>
             </div>
-
-            <div className="p-6 pb-6 bg-white overflow-y-auto">
-               {/* Features List */}
-               <div className="space-y-4 mb-6">
-                  <div className="flex items-start gap-4">
-                     <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center flex-shrink-0 text-indigo-500">
-                        <ArrowLeftRight className="w-5 h-5" />
-                     </div>
-                     <div>
-                        <h4 className="text-slate-800 font-bold mb-1 text-sm">跨裝置即時同步</h4>
-                        <p className="text-slate-500 text-xs leading-relaxed">在手機、平板與電腦之間無縫切換，資料永不遺失。</p>
-                     </div>
-                  </div>
-                  
-                  <div className="flex items-start gap-4">
-                     <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center flex-shrink-0 text-emerald-500">
-                        <Shield className="w-5 h-5" />
-                     </div>
-                     <div>
-                        <h4 className="text-slate-800 font-bold mb-1 text-sm">安全資料備份</h4>
-                        <p className="text-slate-500 text-xs leading-relaxed">您的成就、任務與統計數據都會被安全地保存在雲端。</p>
-                     </div>
-                  </div>
-               </div>
-
-               <div className="flex flex-col gap-2.5">
-                  <button 
-                     onClick={() => { onClose(); onLogin(); }} 
-                     className="w-full py-3.5 bg-slate-900 text-white font-bold rounded-2xl hover:bg-indigo-600 transition-all flex items-center justify-center gap-2 shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:shadow-[0_8px_30px_rgb(79,70,229,0.3)] hover:-translate-y-0.5 text-sm"
-                  >
-                     立即啟用同步
-                     <ArrowRight className="w-4 h-4 opacity-70" />
-                  </button>
-                  <button 
-                     onClick={onClose} 
-                     className="w-full py-3 bg-transparent text-slate-400 font-bold rounded-2xl hover:bg-slate-50 hover:text-slate-600 transition-colors text-sm"
-                  >
-                     保持單機模式
-                  </button>
-               </div>
+            <div className="sync-invite-actions">
+              <button type="button" onClick={() => { onClose(); onLogin(); }} className="sync-invite-primary">立即啟用同步 <ArrowRight size={17} /></button>
+              <button type="button" onClick={onClose} className="sync-invite-secondary">保持單機模式</button>
+              <p>登入帳號後啟用同步，也可以稍後再設定。</p>
             </div>
           </motion.div>
-        </div>
+        </ModalLayer>
       )}
     </AnimatePresence>
   );
@@ -813,7 +634,7 @@ export const ExamReminderModal: React.FC<{
   );
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-md animate-fade-in sm:p-4">
+    <ModalLayer className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-md animate-fade-in sm:p-4">
       <motion.div
         initial={{ opacity: 0, y: 20, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -1019,6 +840,6 @@ export const ExamReminderModal: React.FC<{
           </button>
         </div>
       </motion.div>
-    </div>
+    </ModalLayer>
   );
 };

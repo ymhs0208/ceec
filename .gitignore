@@ -1,0 +1,9 @@
+.env
+.env.local
+.env.*.local
+node_modules/
+package-lock.json
+.dependency-patches/
+dist/
+migration-data/
+migration-report.json

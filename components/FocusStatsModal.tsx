@@ -1,3 +1,6 @@
+import './FocusStatsModal.css';
+import { useToday } from '../utils/useToday';
+import ModalLayer from './ModalLayer';
 import React, { useMemo, useState } from 'react';
 import {
   X,
@@ -19,6 +22,7 @@ import {
   Activity,
   PieChart,
   CalendarDays,
+  Sparkles,
 } from 'lucide-react';
 import { StudySession } from '../types';
 
@@ -26,10 +30,12 @@ interface FocusStatsModalProps {
   isOpen: boolean;
   onClose: () => void;
   sessions: StudySession[];
+  dailyGoal?: number;
   variant?: 'modal' | 'page';
+  onCheckSync?: () => Promise<string>;
 }
 
-type Tab = 'overview' | 'review' | 'records';
+type Tab = 'overview' | 'universe' | 'review' | 'records';
 
 const dayMs = 24 * 60 * 60 * 1000;
 
@@ -83,14 +89,24 @@ const formatDate = (timestamp: number) =>
 const formatTime = (timestamp: number) =>
   new Date(timestamp).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
 
-const FocusStatsModal: React.FC<FocusStatsModalProps> = ({ isOpen, onClose, sessions, variant = 'modal' }) => {
+const FocusStatsModal: React.FC<FocusStatsModalProps> = ({ isOpen, onClose, sessions, dailyGoal = 120, variant = 'modal', onCheckSync }) => {
+  const today = useToday();
   const [activeTab, setActiveTab] = useState<Tab>('overview');
+  const [checkingSync, setCheckingSync] = useState(false);
+  const [syncReport, setSyncReport] = useState('');
+  const checkSync = async () => {
+    if (!onCheckSync || checkingSync) return;
+    setCheckingSync(true);
+    try { setSyncReport(await onCheckSync()); }
+    catch (error) { setSyncReport(error instanceof Error ? error.message : '檢查失敗，請稍後再試。'); }
+    finally { setCheckingSync(false); }
+  };
   const [filterSubject, setFilterSubject] = useState<string>('all');
 
   const sortedSessions = useMemo(() => [...sessions].sort((a, b) => b.timestamp - a.timestamp), [sessions]);
 
   const stats = useMemo(() => {
-    const now = new Date();
+    const now = new Date(today);
     const todayStart = startOfDay(now);
     const weekStart = startOfWeek(now);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
@@ -120,11 +136,14 @@ const FocusStatsModal: React.FC<FocusStatsModalProps> = ({ isOpen, onClose, sess
       const hour = new Date(session.timestamp).getHours();
       hourMap[hour] = (hourMap[hour] || 0) + session.durationMinutes;
 
-      if (!subjectMap[session.subjectId]) {
-        subjectMap[session.subjectId] = { id: session.subjectId, name: session.subjectName, minutes: 0, count: 0 };
+      // Restored ledger rows use the name as their ID; group by name so the
+      // same subject does not split into separate local and cloud totals.
+      const subjectKey = session.subjectName.trim();
+      if (!subjectMap[subjectKey]) {
+        subjectMap[subjectKey] = { id: session.subjectId, name: subjectKey, minutes: 0, count: 0 };
       }
-      subjectMap[session.subjectId].minutes += session.durationMinutes;
-      subjectMap[session.subjectId].count += 1;
+      subjectMap[subjectKey].minutes += session.durationMinutes;
+      subjectMap[subjectKey].count += 1;
     });
 
     const subjectData = Object.values(subjectMap).sort((a, b) => b.minutes - a.minutes);
@@ -232,7 +251,7 @@ const FocusStatsModal: React.FC<FocusStatsModalProps> = ({ isOpen, onClose, sess
       totalMinutes,
       weekDiff,
     };
-  }, [sessions]);
+  }, [sessions, today]);
 
   const uniqueSubjects = useMemo(() => {
     const subjects = new Map<string, string>();
@@ -261,89 +280,37 @@ const FocusStatsModal: React.FC<FocusStatsModalProps> = ({ isOpen, onClose, sess
     { id: 'overview', label: '總覽', caption: '完整統計', icon: <BarChart3 className="h-4 w-4" /> },
     { id: 'review', label: '檢討', caption: '趨勢與建議', icon: <Award className="h-4 w-4" /> },
     { id: 'records', label: '紀錄', caption: '逐筆查看', icon: <List className="h-4 w-4" /> },
+    { id: 'universe', label: '學習宇宙', caption: '星圖與學習地圖', icon: <Sparkles className="h-4 w-4" /> },
   ];
   const activeTabItem = tabs.find((tab) => tab.id === activeTab) || tabs[0];
 
   return (
-    <div className={isPage ? 'animate-fade-in' : 'fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-md animate-fade-in'}>
-      <div className={isPage ? 'relative flex min-h-[calc(100vh-11rem)] w-full flex-col gap-6' : 'relative flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-[2rem] border border-white/70 bg-white/95 shadow-2xl shadow-indigo-100/40 animate-scale-in'}>
-        <header className={isPage ? 'relative overflow-hidden rounded-[1.75rem] border border-white/70 bg-white/85 p-5 shadow-xl shadow-slate-200/60 backdrop-blur-xl sm:p-8' : 'flex flex-col gap-4 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-sky-50 p-5 md:flex-row md:items-center md:justify-between md:p-6'}>
-          {isPage && <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-indigo-500 via-sky-400 to-emerald-400" />}
-          <div className="flex items-start gap-4">
-            <button
-              onClick={onClose}
-              className={isPage ? 'mt-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:border-slate-300 hover:text-slate-900' : 'absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-400 shadow-sm transition-all hover:text-slate-800 md:static'}
-              title="返回"
-            >
-              {isPage ? <ArrowLeft className="h-5 w-5" /> : <X className="h-5 w-5" />}
-            </button>
-            <div>
-              <p className="mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.22em] text-indigo-700">
-                <NotebookText className="h-4 w-4" />
-                Learning Portfolio
-              </p>
-              <h2 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">學習歷程</h2>
-              <p className="mt-3 max-w-2xl text-sm font-semibold leading-relaxed text-slate-500">
-                完整整理你的專注時數、科目分佈、讀書時段、近期趨勢與逐筆紀錄，讓努力不只是過去，而是下一步的方向。
-              </p>
+    <ModalLayer active={!isPage} className={isPage ? 'learning-page animate-fade-in' : 'fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-md animate-fade-in'}>
+      <div className={isPage ? 'portfolio-shell' : 'relative flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-[2rem] border border-white/70 bg-white/95 shadow-2xl shadow-indigo-100/40 animate-scale-in'}>
+        <header className={isPage ? 'portfolio-header' : 'portfolio-modal-header'}>
+          <button type="button" onClick={onClose} className="portfolio-back" aria-label={isPage ? '回到首頁' : '關閉學習歷程'}>{isPage ? <ArrowLeft size={16} /> : <X size={16} />}{isPage ? '回到首頁' : '關閉'}</button>
+          <div className="portfolio-intro">
+            <div><p className="portfolio-eyebrow"><NotebookText size={14} /> LEARNING JOURNAL</p>{isPage ? <h1>學習歷程<span>。</span></h1> : <h2>學習歷程</h2>}<p className="portfolio-description">每一段專注，都在慢慢成為你的實力。</p></div>
+            <div className="portfolio-totals">
+              <TopStat label="累積專注" value={formatDuration(stats.totalMinutes)} tone="indigo" />
+              <TopStat label="專注紀錄" value={`${sessions.length} 筆`} tone="emerald" />
+              <TopStat label="讀書天數" value={`${stats.activeDays} 天`} tone="amber" />
             </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 lg:min-w-[360px]">
-            <TopStat label="累積" value={`${formatHours(stats.totalMinutes)}h`} tone="indigo" />
-            <TopStat label="紀錄" value={`${sessions.length}`} tone="emerald" />
-            <TopStat label="天數" value={`${stats.activeDays}`} tone="amber" />
           </div>
         </header>
-
-        <div className={isPage ? 'grid flex-grow gap-5 lg:grid-cols-[250px_minmax(0,1fr)]' : 'flex-grow overflow-hidden'}>
-          {isPage && (
-            <aside className="hidden lg:block">
-              <div className="sticky top-6 rounded-[1.5rem] border border-white/70 bg-white/85 p-3 shadow-xl shadow-slate-200/60 backdrop-blur-xl">
-                <div className="px-3 pb-3 pt-2">
-                  <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">View</div>
-                  <div className="mt-1 text-lg font-black text-slate-950">{activeTabItem.label}</div>
-                  <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">{activeTabItem.caption}</p>
-                </div>
-                <div className="space-y-1.5">
-                  {tabs.map((tab) => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-all ${activeTab === tab.id ? 'border-indigo-200 bg-indigo-50 text-indigo-800 shadow-sm' : 'border-transparent text-slate-500 hover:border-slate-200 hover:bg-white hover:text-slate-900'}`}
-                    >
-                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">{tab.icon}</span>
-                      <span>
-                        <span className="block text-sm font-black">{tab.label}</span>
-                        <span className="block text-xs font-semibold opacity-70">{tab.caption}</span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </aside>
-          )}
-
-          <div className={isPage ? 'sticky top-3 z-30 rounded-[1.5rem] border border-slate-200/80 bg-slate-50/95 p-2 shadow-lg shadow-slate-200/60 backdrop-blur-xl lg:hidden' : 'border-b border-slate-100 bg-slate-50 p-3'}>
-            <div className="grid grid-cols-3 gap-2">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`min-h-[58px] rounded-2xl px-2.5 py-2 text-center transition-all flex flex-col items-center justify-center gap-1 ${activeTab === tab.id ? 'bg-slate-950 text-white shadow-lg shadow-slate-300/60' : 'bg-white text-slate-500 border border-slate-200 shadow-sm'}`}
-                >
-                  {tab.icon}
-                  <span className="text-xs font-black leading-none">{tab.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <main className={isPage ? 'min-w-0 rounded-[1.5rem] border border-white/70 bg-slate-50/80 p-4 shadow-xl shadow-slate-200/60 backdrop-blur-xl sm:p-6 xl:p-8' : 'h-full overflow-y-auto bg-slate-50 p-4 custom-scrollbar md:p-8'}>
+        <div className={isPage ? 'portfolio-layout' : 'flex-grow overflow-y-auto'}>
+          <nav className="portfolio-nav" aria-label="學習歷程分類">
+            {tabs.map((tab,index) => <button type="button" key={tab.id} aria-pressed={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}><span className="portfolio-nav-number">{String(index+1).padStart(2,'0')}</span>{tab.icon}<span>{tab.label}</span><small>{tab.caption}</small></button>)}
+          </nav>
+          <div className={isPage ? 'portfolio-content' : 'bg-slate-50 p-4 md:p-8'} role="region" aria-label={activeTabItem.label}>
+            {onCheckSync && <section className="mb-6 rounded-2xl border border-indigo-100 bg-white p-5" aria-label="時數、點數與獎章核對">
+              <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-bold text-slate-900">時數、點數與獎章核對</h3><p className="mt-1 text-sm text-slate-500">合併各裝置已上傳的紀錄，檢查尚未入帳的專注與符合資格的獎章。</p></div><button type="button" disabled={checkingSync} onClick={() => void checkSync()} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{checkingSync ? '正在核對…' : '檢查同步'}</button></div>
+              <p role="status" aria-live="polite" className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-600">{syncReport}</p>
+            </section>}
             {activeTab === 'overview' && (
               <div className="space-y-6 animate-fade-in">
-                <section className="overflow-hidden rounded-[1.75rem] border border-white bg-white shadow-xl shadow-indigo-100/40">
-                  <div className="grid gap-0 lg:grid-cols-[1fr_280px]">
+                <section className="portfolio-summary overflow-hidden rounded-[1.75rem] border border-white bg-white shadow-xl shadow-indigo-100/40">
+                  <div className="portfolio-summary-grid grid gap-0 lg:grid-cols-[1fr_280px]">
                     <div className="p-5 sm:p-6">
                       <div className="mb-3 flex items-center gap-2 text-xs font-black text-indigo-700">
                         <Heart className="h-4 w-4" />
@@ -357,10 +324,10 @@ const FocusStatsModal: React.FC<FocusStatsModalProps> = ({ isOpen, onClose, sess
                         <SimpleStat icon={<BookOpen className="h-4 w-4" />} label="主要科目" value={stats.topSubject} />
                       </div>
                     </div>
-                    <div className="border-t border-indigo-100/70 bg-gradient-to-br from-indigo-50 to-sky-50 p-5 lg:border-l lg:border-t-0">
-                      <div className="text-xs font-black text-indigo-500">TOTAL FOCUS</div>
-                      <div className="mt-5 text-5xl font-black text-slate-950">{formatHours(stats.totalMinutes)}</div>
-                      <div className="mt-1 text-sm font-bold text-slate-500">小時專注</div>
+                    <div className="portfolio-today border-t border-indigo-100/70 bg-gradient-to-br from-indigo-50 to-sky-50 p-5 lg:border-l lg:border-t-0">
+                      <div className="text-xs font-black text-indigo-500">TODAY’S FOCUS</div>
+                      <div className="mt-5 text-5xl font-black text-slate-950">{formatHours(stats.todayMinutes)}</div>
+                      <div className="mt-1 text-sm font-bold text-slate-500">小時，留給今天的目標</div>
                       <div className="mt-6 grid gap-2">
                         <MiniPanel label="平均每次" value={formatDuration(stats.averagePerSession)} />
                         <MiniPanel label="最長一次" value={formatDuration(stats.longestSession)} />
@@ -369,7 +336,7 @@ const FocusStatsModal: React.FC<FocusStatsModalProps> = ({ isOpen, onClose, sess
                   </div>
                 </section>
 
-                <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                <div className="portfolio-metrics grid grid-cols-2 gap-3 xl:grid-cols-4">
                   <SummaryCard icon={<Activity className="h-5 w-5" />} label="今日紀錄" value={`${stats.todaySessionCount} 筆`} tone="indigo" />
                   <SummaryCard icon={<CalendarDays className="h-5 w-5" />} label="本月累積" value={`${formatHours(stats.thisMonthMinutes)}h`} tone="emerald" />
                   <SummaryCard icon={<Target className="h-5 w-5" />} label="平均活躍日" value={formatDuration(stats.averagePerActiveDay)} tone="amber" />
@@ -382,10 +349,23 @@ const FocusStatsModal: React.FC<FocusStatsModalProps> = ({ isOpen, onClose, sess
                   todayMinutes={stats.todayMinutes}
                 />
 
-                <div className="grid grid-cols-1 gap-6 2xl:grid-cols-[1.05fr_0.95fr]">
+                <div className="portfolio-detail-grid grid grid-cols-1 gap-6 2xl:grid-cols-[1.05fr_0.95fr]">
                   <SubjectSection subjectData={stats.subjectData} totalMinutes={stats.totalMinutes} />
                   <HeatmapSection heatmapData={stats.heatmapData} maxHeatMinutes={stats.maxHeatMinutes} />
                 </div>
+              </div>
+            )}
+
+            {activeTab === 'universe' && (
+              <div className="xl:-mx-2 2xl:-mx-4">
+                <LearningUniverse
+                  dailyGoal={dailyGoal}
+                  heatmapData={stats.heatmapData}
+                  hourData={stats.hourData}
+                  maxHourMinutes={stats.maxHourMinutes}
+                  subjectData={stats.subjectData}
+                  thisWeekMinutes={stats.thisWeekMinutes}
+                />
               </div>
             )}
 
@@ -457,10 +437,10 @@ const FocusStatsModal: React.FC<FocusStatsModalProps> = ({ isOpen, onClose, sess
                 uniqueSubjects={uniqueSubjects}
               />
             )}
-          </main>
+          </div>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 };
 
@@ -477,7 +457,7 @@ const topStatTone = {
 };
 
 const TopStat: React.FC<TopStatProps> = ({ label, value, tone }) => (
-  <div className={`rounded-2xl border px-3 py-3 text-center ${topStatTone[tone]}`}>
+  <div className={`portfolio-top-stat rounded-2xl border px-3 py-3 text-center ${topStatTone[tone]}`}>
     <div className="text-xl font-black">{value}</div>
     <div className="mt-1 text-[10px] font-black uppercase tracking-widest opacity-70">{label}</div>
   </div>
@@ -546,7 +526,7 @@ const TrendSection: React.FC<TrendSectionProps> = ({ dailyData, maxDailyMinutes,
   );
 
   return (
-    <section className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-sm">
+    <section className="portfolio-trend overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 bg-gradient-to-br from-white via-indigo-50/60 to-sky-50/70 p-5 sm:p-6">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
@@ -590,8 +570,8 @@ const TrendSection: React.FC<TrendSectionProps> = ({ dailyData, maxDailyMinutes,
           </div>
         </div>
 
-        <div className="-mx-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
-          <div className="min-w-[720px] rounded-[1.25rem] border border-slate-100 bg-slate-50/70 p-4">
+        <div className="portfolio-chart-scroll -mx-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
+          <div className="portfolio-chart min-w-[720px] rounded-[1.25rem] border border-slate-100 bg-slate-50/70 p-4">
             <div className="flex h-56 items-end gap-2">
               {dailyData.map((day, index) => {
                 const height = Math.max((day.minutes / maxDailyMinutes) * 100, day.minutes > 0 ? 10 : 3);
@@ -709,6 +689,153 @@ const HeatmapSection: React.FC<{
   </section>
 );
 
+interface LearningUniverseProps {
+  dailyGoal: number;
+  heatmapData: Array<{ key: string; label: string; minutes: number }>;
+  hourData: Array<{ hour: number; minutes: number }>;
+  maxHourMinutes: number;
+  subjectData: Array<{ id: string; name: string; minutes: number; count: number }>;
+  thisWeekMinutes: number;
+}
+
+const LearningUniverse: React.FC<LearningUniverseProps> = ({
+  dailyGoal,
+  heatmapData,
+  hourData,
+  maxHourMinutes,
+  subjectData,
+  thisWeekMinutes,
+}) => {
+  const maxSubjectMinutes = Math.max(...subjectData.map((subject) => subject.minutes), 1);
+  const weeklyTarget = Math.max(dailyGoal * 7, 1);
+  const journeyProgress = Math.min(100, Math.round((thisWeekMinutes / weeklyTarget) * 100));
+  const peakHour = hourData.reduce((best, item) => item.minutes > best.minutes ? item : best, hourData[0] || { hour: 0, minutes: 0 });
+  const orbitHours = hourData.filter((item) => item.minutes > 0);
+  const constellationPositions = [
+    { left: '17%', top: '28%' }, { left: '74%', top: '18%' }, { left: '82%', top: '66%' },
+    { left: '48%', top: '79%' }, { left: '17%', top: '68%' }, { left: '48%', top: '15%' },
+  ];
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <section className="portfolio-universe relative overflow-hidden rounded-[1.75rem] border border-indigo-100 bg-slate-950 p-5 text-white shadow-xl shadow-indigo-200/60 sm:p-7">
+        <div className="absolute inset-0 opacity-60 [background-image:radial-gradient(circle_at_20%_20%,rgba(129,140,248,.45),transparent_25%),radial-gradient(circle_at_80%_20%,rgba(56,189,248,.28),transparent_24%),radial-gradient(circle_at_50%_100%,rgba(168,85,247,.3),transparent_35%)]" />
+        <div className="absolute inset-0 opacity-30 [background-image:radial-gradient(white_1px,transparent_1px)] [background-size:24px_24px]" />
+        <div className="relative">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-indigo-200"><Sparkles className="h-4 w-4" />Learning universe</div>
+              <h3 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">你的學習星圖</h3>
+              <p className="mt-2 max-w-xl text-sm font-semibold leading-relaxed text-indigo-100/80">每個科目都是一個星系；讀得越久，星星越大、越亮。</p>
+            </div>
+            <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-right backdrop-blur">
+              <div className="text-2xl font-black">{subjectData.length}</div>
+              <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-indigo-200">已點亮科目</div>
+            </div>
+          </div>
+
+          {subjectData.length > 0 && (
+            <div className="relative mt-6 h-[350px] overflow-hidden rounded-[1.75rem] border border-white/10 bg-[radial-gradient(circle_at_center,rgba(99,102,241,.34),transparent_18%),radial-gradient(circle_at_50%_50%,rgba(255,255,255,.08),transparent_1%),linear-gradient(145deg,rgba(15,23,42,.15),rgba(49,46,129,.3))] shadow-inner shadow-black/30 sm:h-[410px] xl:h-[480px] 2xl:h-[540px]">
+              <div className="absolute inset-[12%] rounded-full border border-dashed border-indigo-200/15 animate-[spin_40s_linear_infinite]" />
+              <div className="absolute inset-[25%] rounded-full border border-sky-200/15 animate-[spin_28s_linear_infinite_reverse]" />
+              <div className="absolute inset-[38%] rounded-full border border-fuchsia-200/20" />
+              <svg className="absolute inset-0 h-full w-full opacity-50" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                <path d="M17 28 L48 15 L74 18 L82 66 L48 79 L17 68 Z" fill="none" stroke="rgba(191,219,254,.55)" strokeWidth="0.35" strokeDasharray="1 1.6" />
+                <path d="M17 28 L48 79 M74 18 L48 79 M17 68 L82 66" fill="none" stroke="rgba(196,181,253,.42)" strokeWidth="0.25" />
+              </svg>
+              <div className="absolute left-1/2 top-1/2 flex h-24 w-24 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/25 bg-white/10 shadow-[0_0_70px_rgba(129,140,248,.9)] backdrop-blur sm:h-28 sm:w-28">
+                <div className="absolute inset-2 rounded-full bg-gradient-to-br from-white via-indigo-200 to-violet-500 opacity-90 animate-pulse" />
+                <div className="relative text-center"><Sparkles className="mx-auto h-6 w-6 text-white" /><div className="mt-1 text-[9px] font-black uppercase tracking-[0.18em] text-white">Focus core</div></div>
+              </div>
+              {subjectData.slice(0, 6).map((subject, index) => {
+                const style = getSubjectStyle(subject.id, subject.name);
+                const position = constellationPositions[index];
+                const size = 46 + Math.round((subject.minutes / maxSubjectMinutes) * 24);
+                return (
+                  <div key={`constellation-${subject.id}`} className="group absolute -translate-x-1/2 -translate-y-1/2 text-center" style={position}>
+                    <div className={`relative mx-auto flex items-center justify-center rounded-full ${style.dot} text-white shadow-[0_0_32px_rgba(255,255,255,.45)] ring-4 ring-white/10 transition duration-300 group-hover:scale-125 group-hover:ring-8`} style={{ width: size, height: size }}>
+                      <Sparkles className="h-4 w-4" />
+                      <span className="absolute inset-[-9px] rounded-full border border-white/30 animate-ping opacity-30" />
+                    </div>
+                    <div className="mt-2 max-w-[88px] truncate text-[11px] font-black text-white drop-shadow">{subject.name}</div>
+                    <div className="text-[9px] font-bold text-indigo-100/80">{formatShortDuration(subject.minutes)}</div>
+                  </div>
+                );
+              })}
+              <div className="absolute bottom-4 left-4 rounded-full border border-white/10 bg-slate-950/35 px-3 py-1.5 text-[10px] font-bold text-indigo-100 backdrop-blur">懸停星系，查看你的科目投入</div>
+            </div>
+          )}
+
+          {subjectData.length === 0 ? (
+            <div className="mt-8 rounded-2xl border border-dashed border-white/20 bg-white/5 p-8 text-center text-sm font-bold text-indigo-100">完成第一段專注後，這裡會點亮你的第一顆學習星星。</div>
+          ) : (
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {subjectData.slice(0, 6).map((subject, index) => {
+                const size = 34 + Math.round((subject.minutes / maxSubjectMinutes) * 22);
+                const style = getSubjectStyle(subject.id, subject.name);
+                return (
+                  <div key={subject.id} className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.07] p-4 backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/[0.12]">
+                    <div className={`absolute -right-4 -top-5 h-20 w-20 rounded-full ${style.dot} opacity-20 blur-2xl`} />
+                    <div className="relative flex items-center gap-3">
+                      <div className={`flex shrink-0 items-center justify-center rounded-full ${style.dot} text-white shadow-lg`} style={{ width: size, height: size }}>
+                        <Sparkles className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-black">{subject.name}</div>
+                        <div className="mt-1 text-xs font-bold text-indigo-100/70">{formatDuration(subject.minutes)} · {subject.count} 次專注</div>
+                      </div>
+                    </div>
+                    <div className="relative mt-3 h-1.5 overflow-hidden rounded-full bg-white/10"><div className={`h-full rounded-full ${style.bar}`} style={{ width: `${Math.max(8, Math.round((subject.minutes / maxSubjectMinutes) * 100))}%` }} /></div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <section className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex items-start justify-between gap-3"><div><div className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-500">Focus orbit</div><h3 className="mt-1 text-xl font-black text-slate-950">你的專注軌道</h3><p className="mt-2 text-xs font-semibold leading-relaxed text-slate-500">每個亮點代表你曾在那個時段專注。</p></div><Clock className="h-6 w-6 text-rose-500" /></div>
+          <div className="relative mx-auto mt-5 aspect-square max-w-[320px] rounded-full border border-rose-100 bg-[radial-gradient(circle_at_center,#fff_0,#fff_24%,#fff1f2_25%,#fff1f2_26%,#fff_27%,#fff_43%,#fdf2f8_44%,#fdf2f8_45%,#fff_46%)]">
+            <div className="absolute inset-[35%] flex items-center justify-center rounded-full border border-rose-100 bg-white text-center shadow-sm"><div><div className="text-2xl font-black text-slate-950">{peakHour.minutes > 0 ? `${String(peakHour.hour).padStart(2, '0')}:00` : '—'}</div><div className="mt-1 text-[10px] font-black uppercase tracking-wider text-rose-500">黃金專注時段</div></div></div>
+            {[0, 6, 12, 18].map((hour) => <span key={hour} className="absolute text-[10px] font-black text-slate-400" style={{ left: hour === 6 ? '8%' : hour === 18 ? '87%' : '50%', top: hour === 0 ? '5%' : hour === 12 ? '90%' : '48%', transform: 'translate(-50%, -50%)' }}>{String(hour).padStart(2, '0')}</span>)}
+            {orbitHours.map((item) => {
+              const angle = (item.hour / 24) * Math.PI * 2 - Math.PI / 2;
+              const distance = 34;
+              const intensity = Math.max(9, Math.round((item.minutes / maxHourMinutes) * 18));
+              return <span key={item.hour} title={`${String(item.hour).padStart(2, '0')}:00 · ${formatDuration(item.minutes)}`} className="absolute rounded-full bg-rose-500 ring-4 ring-rose-100 transition-transform hover:scale-125" style={{ width: intensity, height: intensity, left: `${50 + Math.cos(angle) * distance}%`, top: `${50 + Math.sin(angle) * distance}%`, transform: 'translate(-50%, -50%)', opacity: 0.45 + (item.minutes / maxHourMinutes) * 0.55 }} />;
+            })}
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-[1.75rem] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-5 shadow-sm sm:p-6">
+          <div className="flex items-start justify-between gap-3"><div><div className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">Weekly summit</div><h3 className="mt-1 text-xl font-black text-slate-950">本週登山路線</h3><p className="mt-2 text-xs font-semibold leading-relaxed text-slate-500">以每日目標 × 7 作為本週山頂。</p></div><Target className="h-6 w-6 text-emerald-600" /></div>
+          <div className="relative mt-10 h-32 overflow-hidden rounded-2xl border border-emerald-100 bg-white/75">
+            <div className="absolute inset-x-0 bottom-0 h-20 bg-[linear-gradient(135deg,transparent_0_40%,rgba(16,185,129,.24)_40%_58%,transparent_58%),linear-gradient(45deg,transparent_0_45%,rgba(14,165,233,.2)_45%_65%,transparent_65%)]" />
+            <div className="absolute bottom-7 left-5 right-5 h-2 rounded-full bg-slate-200"><div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-sky-500 transition-all duration-700" style={{ width: `${journeyProgress}%` }} /></div>
+            <div className="absolute bottom-4 text-xl" style={{ left: `calc(${Math.max(4, journeyProgress)}% - 10px)` }}>⛰️</div>
+            <div className="absolute right-5 top-4 text-2xl">🏁</div>
+          </div>
+          <div className="mt-4 flex items-end justify-between gap-4"><div><div className="text-3xl font-black text-slate-950">{journeyProgress}%</div><div className="mt-1 text-xs font-bold text-slate-500">本週 {formatDuration(thisWeekMinutes)}／目標 {formatDuration(weeklyTarget)}</div></div><div className="rounded-xl bg-emerald-100 px-3 py-2 text-xs font-black text-emerald-700">{journeyProgress >= 100 ? '已登頂！' : `再 ${formatDuration(Math.max(0, weeklyTarget - thisWeekMinutes))}`}</div></div>
+        </section>
+      </div>
+
+      <section className="rounded-[1.75rem] border border-amber-100 bg-gradient-to-br from-amber-50/80 via-white to-rose-50/60 p-5 shadow-sm sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4"><div><div className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-600">Focus garden</div><h3 className="mt-1 text-xl font-black text-slate-950">近 28 日學習花園</h3><p className="mt-2 text-xs font-semibold leading-relaxed text-slate-500">每天的專注會長成一朵花；時間越長，花朵越盛開。</p></div><div className="rounded-2xl border border-amber-100 bg-white/80 px-3 py-2 text-xs font-black text-amber-700">{heatmapData.filter((day) => day.minutes > 0).length} 天已灌溉</div></div>
+        <div className="mt-5 grid grid-cols-7 gap-2 sm:gap-3">
+          {heatmapData.map((day) => {
+            const fullness = day.minutes === 0 ? 0 : day.minutes >= 120 ? 3 : day.minutes >= 60 ? 2 : 1;
+            const flower = fullness === 3 ? '✿' : fullness === 2 ? '✾' : fullness === 1 ? '✦' : '·';
+            return <div key={day.key} title={`${day.label}: ${formatDuration(day.minutes)}`} className={`flex aspect-square flex-col items-center justify-center rounded-xl border transition hover:-translate-y-0.5 ${fullness ? 'border-amber-100 bg-white shadow-sm' : 'border-slate-100 bg-slate-50 text-slate-300'}`}><span className={`text-lg sm:text-2xl ${fullness === 3 ? 'text-rose-500' : fullness === 2 ? 'text-amber-500' : fullness === 1 ? 'text-emerald-500' : ''}`}>{flower}</span><span className="mt-0.5 hidden text-[8px] font-bold text-slate-400 sm:block">{day.label.split('/').pop()}</span></div>;
+          })}
+        </div>
+        <div className="mt-4 flex flex-wrap gap-3 text-[11px] font-bold text-slate-500"><span>· 尚未專注</span><span className="text-emerald-600">✦ 1–59 分</span><span className="text-amber-600">✾ 60–119 分</span><span className="text-rose-500">✿ 120 分以上</span></div>
+      </section>
+    </div>
+  );
+};
+
 interface PeriodCardProps {
   title: string;
   minutes: number;
@@ -763,14 +890,16 @@ const RecordsTab: React.FC<{
   setFilterSubject: React.Dispatch<React.SetStateAction<string>>;
   uniqueSubjects: string[];
 }> = ({ filterSubject, groupedSessionEntries, setFilterSubject, uniqueSubjects }) => (
-  <div className="space-y-5 pb-8 animate-fade-in">
-    <div className="sticky top-3 z-20 -mx-3 bg-slate-50/95 px-3 py-2 backdrop-blur-sm sm:-mx-4 sm:px-4 lg:mx-0 lg:px-0">
+  <div className="portfolio-records space-y-5 pb-8 animate-fade-in">
+    <div className="portfolio-record-filters -mx-3 bg-slate-50/95 px-3 py-2 sm:-mx-4 sm:px-4 lg:mx-0 lg:px-0">
       <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
         <div className="flex flex-shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-500">
           <Filter className="h-3.5 w-3.5" />
           篩選
         </div>
         <button
+          type="button"
+          aria-pressed={filterSubject === 'all'}
           onClick={() => setFilterSubject('all')}
           className={`whitespace-nowrap rounded-full border px-4 py-1.5 text-xs font-bold transition-all ${filterSubject === 'all' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}
         >
@@ -779,6 +908,8 @@ const RecordsTab: React.FC<{
         {uniqueSubjects.map((subject) => (
           <button
             key={subject}
+            type="button"
+            aria-pressed={filterSubject === subject}
             onClick={() => setFilterSubject(subject)}
             className={`whitespace-nowrap rounded-full border px-4 py-1.5 text-xs font-bold transition-all ${filterSubject === subject ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}
           >

@@ -3,7 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import dotenv from 'dotenv';
-import XLSX from 'xlsx';
+import * as XLSX from 'xlsx';
+
+// SheetJS 0.20 uses the ESM entry point; Node file IO is supplied explicitly.
+XLSX.set_fs(fs);
 
 dotenv.config({ path: path.resolve('.env.local') });
 

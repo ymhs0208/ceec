@@ -1,0 +1,61 @@
+.focus-workbench.study-timer-panel { min-height:0; color:#9b85ac; }
+.focus-workbench .study-timer-background { border:1px solid #e5dfed; border-radius:24px; background:radial-gradient(ellipse at 50% 48%,#f4edf93b,transparent 65%),#fffefb; box-shadow:0 8px 24px #7a658a05; backdrop-filter:none; }
+.focus-workbench .study-timer-background > div { display:none; }
+.focus-workbench > .focus-workbench-content { min-height:510px; }
+.focus-workbench-heading { display:flex; justify-content:space-between; align-items:center; padding:17px 24px 11px; }
+.focus-workbench-heading > span { display:flex; align-items:center; gap:6px; font-size:8px; font-weight:600; letter-spacing:1.7px; color:#b09bbe; }
+.focus-workbench-heading > button { display:grid; place-items:center; width:32px; height:32px; border:1px solid #eee5f4; border-radius:9px; background:#faf6fd; color:#b4a1c2; }
+.focus-workbench .study-timer-tabs { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:4px; margin:0 24px; padding:5px; border:1px solid #ece3f3; border-radius:13px; background:#f8f4fb; box-shadow:none; backdrop-filter:none; z-index:20; }
+.focus-workbench .study-timer-tabs > button { min-width:0; min-height:41px; gap:6px; padding:10px 6px; border-radius:9px; color:#b5a4c2; font-size:11px; font-weight:550; }
+.focus-workbench .study-timer-tabs > button > svg { color:#bca9ca; width:14px; height:14px; }
+.focus-workbench .study-timer-tabs > button[aria-pressed=true],.focus-workbench .study-timer-tabs > button[aria-pressed=true] > svg { color:#9a7caf; }
+.focus-workbench .study-timer-tabs > button > .absolute { border-radius:9px; background:#fffefc; border-color:#e6d9ee; box-shadow:0 2px 5px #9074a009; }
+.focus-subject-strip { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:14px 26px 0; }
+.focus-subject-strip > button { display:flex; align-items:center; gap:6px; min-height:32px; min-width:0; padding:5px 8px; border:1px solid #eae0f1; border-radius:7px; background:#fcf9fe; color:#ac93bf; font-size:10px; }
+.focus-subject-strip > button > span:nth-child(2) { overflow-wrap:anywhere; }
+.focus-subject-dot { flex-shrink:0; width:4px; height:4px; border-radius:50%; background:#bea3d1; }
+.focus-subject-strip > span { color:#c1afcd; font-size:9px; line-height:1.7; text-align:right; }
+.focus-workbench .focus-timer-body { padding:25px 28px 29px; }
+.focus-timer-body > .text-xs { margin-bottom:20px; color:#b6a1c6; font-size:9px; letter-spacing:2px; }
+.focus-timer-body > .text-xs > span { background:#c3abd6; }
+.focus-workbench .focus-clock-face { position:relative; width:100%; margin-bottom:20px; padding:4px 0; }
+.focus-clock-face > .absolute { display:none; }
+.focus-workbench .study-timer-digits { max-width:100%; font-size:clamp(62px,7.6vw,104px); font-weight:400; line-height:1.1; letter-spacing:-5px; filter:none; }
+.focus-workbench .study-timer-digits > span { background:none; color:#967aa9; -webkit-text-fill-color:#967aa9; }
+.focus-workbench[data-running=true] .study-timer-digits > span { color:#87659d; -webkit-text-fill-color:#87659d; }
+.focus-session-progress { width:126px; height:3px; margin:0 auto 12px; overflow:hidden; border-radius:4px; background:#eee4f5; }
+.focus-session-progress > span { display:block; height:100%; border-radius:inherit; background:#b49ac8; transition:width 1s linear; }
+.focus-session-caption { margin:0 0 24px; color:#c0accf; font-size:10px; line-height:1.8; letter-spacing:.5px; text-align:center; }
+.focus-workbench .focus-timer-actions { gap:16px; }
+.focus-timer-actions > button:first-child,.focus-timer-actions > div { width:42px; height:42px; }
+.focus-timer-actions > button:first-child,.focus-timer-actions > div > button { border:1px solid #e6daee; border-radius:12px; background:#fcf9fe; color:#b49cc5; box-shadow:none; }
+.focus-timer-actions > button:first-child svg,.focus-timer-actions > div svg { width:17px; height:17px; }
+.focus-workbench .study-timer-start { min-width:145px; height:48px; padding:0 23px; border:1px solid #d6c0e5; border-radius:13px; background:#eaddf3; color:#9977af; box-shadow:0 4px 10px #9c7bb30a; transition:background .2s,border-color .2s; }
+.focus-workbench .study-timer-start:hover { background:#e0cdeb; border-color:#c5a8d8; transform:none; }
+.focus-workbench .study-timer-start > span { font-size:12px; font-weight:600; }
+.focus-workbench .study-timer-start svg { width:16px; height:16px; }
+.focus-challenge-card { width:100%; max-width:350px; margin:0 auto 20px; padding:13px 16px; border:1px solid #e9deef; border-radius:14px; background:linear-gradient(120deg,#faf5fd,#fdfaf5); }
+.focus-challenge-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.focus-challenge-heading > span { display:flex; align-items:center; gap:5px; color:#b59ac6; font-size:9px; }
+.focus-challenge-heading > button { display:flex; align-items:center; gap:4px; min-height:30px; color:#b5a2c1; font-size:9px; }
+.focus-challenge-score { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:5px; }
+.focus-challenge-score > div { display:flex; align-items:baseline; gap:8px; }
+.focus-challenge-score strong { color:#ac8abc; font-size:31px; font-weight:500; line-height:1.2; font-variant-numeric:tabular-nums; }
+.focus-challenge-score > div > span { color:#b6a0c4; font-size:9px; }
+.focus-challenge-best { display:flex; align-items:center; gap:4px; padding:4px 7px; border:1px solid #ece0cb; border-radius:6px; background:#faf4e9; color:#b6a17f; font-size:8px; white-space:nowrap; }
+.focus-challenge-card p { margin:9px 0 0; color:#c0afca; font-size:9px; line-height:1.8; }
+.focus-workbench .study-music-widget { padding:16px 24px 19px; border-top:1px solid #eee5f4; }
+.focus-workbench .focus-music-mini { --mini-cover-offset:51px; width:100%; max-width:none; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; }
+.focus-workbench .focus-music-mini-open { min-height:52px; gap:10px; padding:0; }
+.focus-workbench .focus-music-mini-cover { width:41px; height:41px; border:1px solid #e7dced; border-radius:12px; background:#f2eaf8; color:#b299c3; }
+.focus-workbench .focus-music-mini-copy small { font-size:8px; color:#b8a2c8; }
+.focus-workbench .focus-music-mini-copy strong { margin-top:4px; color:#a086b3; font-size:11px; font-weight:550; }
+.focus-workbench .focus-music-mini-copy > span { color:#c0afcb; font-size:8px; }
+.focus-workbench .focus-music-mini-play { width:32px; height:32px; border:1px solid #e0cfea; background:#eee2f6; color:#ac8fc0; }
+.focus-workbench .focus-music-mini-next { color:#b8a2c8; }
+.focus-workbench button:focus-visible { outline:2px solid #b49ac8; outline-offset:3px; }
+@media(max-width:600px) {
+  .focus-workbench-heading { padding:14px 18px 9px; }.focus-workbench .study-timer-tabs { margin-inline:18px; padding:4px; gap:3px; }.focus-workbench .study-timer-tabs > button { gap:4px; padding:9px 4px; font-size:10px; min-height:39px; }.focus-workbench .study-timer-tabs > button > svg { width:12px; height:12px; }.focus-subject-strip { margin-inline:20px; }.focus-subject-strip > span { font-size:8px; max-width:60%; }.focus-workbench .focus-timer-body { padding:23px 20px 25px; }.focus-workbench .study-timer-digits { font-size:74px; letter-spacing:-4px; }.focus-session-caption { font-size:9px; }.focus-workbench .focus-timer-actions { gap:12px; }.focus-workbench .study-timer-start { min-width:130px; padding-inline:17px; }.focus-workbench .study-music-widget { padding:15px 20px 17px; }.focus-challenge-card { padding:10px 13px; }.focus-workbench > .focus-workbench-content { min-height:470px; }
+}
+@media(max-width:360px) { .focus-workbench .study-timer-digits { font-size:64px; }.focus-workbench .focus-timer-actions { gap:9px; }.focus-workbench .study-timer-start { min-width:115px; padding-inline:13px; }.focus-challenge-score { gap:7px; }.focus-challenge-best { padding:4px 5px; } }
+@media(prefers-reduced-motion:reduce) { .focus-workbench * { transition:none !important; } }

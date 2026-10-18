@@ -1,4 +1,12 @@
 const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
+const taipeiDateFormatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Taipei' });
+const taipeiTimeFormatter = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Taipei',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
 
 export const parseTaipeiDateTime = (value: string | Date): Date => {
   if (value instanceof Date) return value;
@@ -29,16 +37,10 @@ export const taipeiDateTimeMs = (date: string, time: string): number =>
   parseTaipeiDateTime(`${date}T${time}:00`).getTime();
 
 export const getTaipeiDateString = (date: Date): string =>
-  date.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+  taipeiDateFormatter.format(date);
 
 export const getTaipeiTimeSeconds = (date: Date): number => {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Taipei',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(date);
+  const parts = taipeiTimeFormatter.formatToParts(date);
   const get = (type: string) => Number(parts.find(part => part.type === type)?.value || 0);
   return get('hour') * 3600 + get('minute') * 60 + get('second');
 };

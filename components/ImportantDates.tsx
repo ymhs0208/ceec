@@ -1,17 +1,21 @@
+import ModalLayer from './ModalLayer';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { Calendar, Trash2, Plus, Flag, ChevronDown, ChevronUp, Clock, BookOpen, ListFilter, Timer, X, CalendarDays, BellRing, Sparkles, ExternalLink } from 'lucide-react';
 import { CustomDate } from '../types';
+import { EXAM_PRESETS } from '../constants';
+import './ImportantDates.css';
+import { useToday } from '../utils/useToday';
 import { motion, AnimatePresence } from 'framer-motion';
 
-interface ScheduleItem {
+export interface ScheduleItem {
   event: string;
   date: string;
   note?: string;
 }
 
-interface ScheduleCategory {
+export interface ScheduleCategory {
   title: string;
   icon: React.ReactNode;
   items: ScheduleItem[];
@@ -22,14 +26,34 @@ const OFFICIAL_SCHEDULE_116_GSAT: ScheduleCategory[] = [
     title: "簡章、報名與考試",
     icon: <BookOpen className="w-4 h-4" />,
     items: [
-      { event: "116學年度考試簡章公告與發售", date: "115.08.04", note: "實際日期以簡章為準" },
+      { event: "116學年度考試簡章發售", date: "115.08.04" },
       { event: "高中英語聽力測驗第一次報名", date: "115.09.03 ~ 09.10" },
+      { event: "第一次英聽應考服務申請", date: "115.09.03 ~ 09.10", note: "身心障礙及重大傷病考生" },
+      { event: "第一次英聽報名結果檢核", date: "115.09.15 ~ 09.21" },
+      { event: "第一次英聽應考服務審查結果", date: "115.10.02" },
+      { event: "第一次英聽應考資訊與試場公布", date: "115.10.13" },
       { event: "高中英語聽力測驗第一次考試", date: "115.10.17" },
+      { event: "第一次英聽成績公布與查詢", date: "115.10.30" },
+      { event: "申請第一次英聽成績複查", date: "115.10.30 ~ 11.02" },
+      { event: "第一次英聽成績複查結果公布", date: "115.11.04" },
       { event: "學科能力測驗報名", date: "115.10.27 ~ 11.10" },
+      { event: "學測應考服務申請", date: "115.10.27 ~ 11.10", note: "身心障礙及重大傷病考生" },
       { event: "高中英語聽力測驗第二次報名", date: "115.11.04 ~ 11.10" },
+      { event: "第二次英聽應考服務申請", date: "115.11.04 ~ 11.10", note: "身心障礙及重大傷病考生" },
+      { event: "第二次英聽／學測報名結果檢核", date: "115.11.13 ~ 11.19" },
+      { event: "第二次英聽應考服務審查結果", date: "115.11.24" },
       { event: "高中英語聽力測驗第二次考試", date: "115.12.12" },
-      { event: "學科能力測驗", date: "116.01.22 ~ 01.24", note: "暫定考試日期" },
-      { event: "學測放榜", date: "預計 116.02" },
+      { event: "第二次英聽成績公布與查詢", date: "115.12.24" },
+      { event: "申請第二次英聽成績複查", date: "115.12.24 ~ 12.28" },
+      { event: "第二次英聽成績複查結果公布", date: "115.12.30" },
+      { event: "學測應考服務審查結果", date: "115.12.18" },
+      { event: "學測應考資訊與試場公布", date: "116.01.05" },
+      { event: "學科能力測驗", date: "116.01.22 ~ 01.24" },
+      { event: "學測參考答案公布", date: "116.01.23 ~ 01.25" },
+      { event: "學測成績公布與查詢", date: "116.02.25" },
+      { event: "寄發學測成績通知單", date: "116.02.26" },
+      { event: "申請學測成績複查", date: "116.02.26 ~ 03.04" },
+      { event: "學測成績複查結果公布", date: "116.03.11" },
     ]
   },
   {
@@ -72,10 +96,17 @@ const OFFICIAL_SCHEDULE_116_AST: ScheduleCategory[] = [
     title: "報名與考試",
     icon: <BookOpen className="w-4 h-4" />,
     items: [
-      { event: "116學年度考試簡章公告與發售", date: "115.08.04", note: "實際日期以簡章為準" },
+      { event: "116學年度考試簡章發售", date: "115.08.04" },
       { event: "分科測驗報名", date: "116.06.03 ~ 06.15" },
-      { event: "分科測驗", date: "116.07.10 ~ 07.11", note: "暫定考試日期" },
-      { event: "放榜/成績公布", date: "116.07.28", note: "預計" },
+      { event: "分科測驗應考服務申請", date: "116.06.03 ~ 06.15", note: "身心障礙及重大傷病考生" },
+      { event: "分科測驗報名結果檢核", date: "116.06.18 ~ 06.21" },
+      { event: "分科測驗應考服務審查結果", date: "116.06.25" },
+      { event: "分科應考資訊與試場公布", date: "116.07.06" },
+      { event: "分科測驗", date: "116.07.10 ~ 07.11" },
+      { event: "分科測驗參考答案公布", date: "116.07.11 ~ 07.12" },
+      { event: "分科測驗成績公布與查詢", date: "116.07.29" },
+      { event: "申請分科測驗成績複查", date: "116.07.29 ~ 08.03" },
+      { event: "分科測驗成績複查結果公布", date: "116.08.10" },
     ]
   },
   {
@@ -149,6 +180,127 @@ const OFFICIAL_SCHEDULE_115_TVET: ScheduleCategory[] = [
       { event: "成績複查結果查詢", date: "115.05.22", note: "下午5時起" },
     ]
   }
+];
+
+// 教育部 115.09.11 臺教授國部字第 1155404304 號函。
+// 原始日程表只公布日期；各科時段仍須以會考簡章確認。
+const OFFICIAL_SCHEDULE_116_CAP: ScheduleCategory[] = [
+  {
+    title: '會考報名、考試與成績',
+    icon: <BookOpen className="w-4 h-4" />,
+    items: [
+      { event: '國中教育會考報名', date: '116.03.04 ~ 03.06' },
+      { event: '寄發國中教育會考准考證', date: '116.04.09' },
+      { event: '國中教育會考', date: '116.05.15 ~ 05.16', note: '星期六、星期日；各科時段以會考簡章為準' },
+      { event: '寄發會考成績通知單並開放網路查詢', date: '116.06.04' },
+    ],
+  },
+  {
+    title: '高中職免試入學與志願選填',
+    icon: <ListFilter className="w-4 h-4" />,
+    items: [
+      { event: '免試入學變更就學區申請', date: '116.04.22 ~ 04.29' },
+      { event: '學習區完全免試入學報名', date: '116.05.04 ~ 05.05' },
+      { event: '學習區完全免試入學放榜', date: '116.05.13' },
+      { event: '各就學區辦理優先免試入學開始', date: '116.05.17' },
+      { event: '免試入學變更就學區審查結果通知截止', date: '116.05.17' },
+      { event: '各校直升入學報名', date: '116.05.27 ~ 06.04' },
+      { event: '各校直升入學放榜截止', date: '116.06.11' },
+      { event: '學習區完全免試入學報到', date: '116.06.14' },
+      { event: '學習區完全免試入學報到後聲明放棄錄取資格', date: '116.06.15' },
+      { event: '各校直升入學報到截止', date: '116.06.15', note: '含報到後聲明放棄錄取資格' },
+      { event: '各就學區優先免試入學放榜、報到截止', date: '116.06.15', note: '含報到後聲明放棄錄取資格' },
+      { event: '免試入學公告實際招生名額、開放個人序位查詢及志願選填', date: '116.06.18' },
+      { event: '個人序位查詢及免試入學志願選填截止', date: '116.06.24' },
+      { event: '各就學區高中職免試入學報名截止', date: '116.06.29' },
+      { event: '各就學區免試入學放榜', date: '116.07.06' },
+      { event: '各就學區免試入學報到', date: '116.07.08' },
+      { event: '免試入學報到後聲明放棄錄取資格', date: '116.07.12' },
+      { event: '免試入學續招學校簡章公告截止', date: '116.07.27' },
+    ],
+  },
+  {
+    title: '五專免試入學',
+    icon: <BookOpen className="w-4 h-4" />,
+    items: [
+      { event: '五專完全免試入學報名', date: '116.04.27 ~ 05.03' },
+      { event: '五專完全免試入學放榜', date: '116.05.13' },
+      { event: '五專優先免試入學報名', date: '116.05.17 ~ 05.21' },
+      { event: '五專優先免試入學放榜、五專完全免試入學報到截止', date: '116.06.11' },
+      { event: '五專優先免試入學報到截止', date: '116.06.15', note: '含報到後聲明放棄錄取資格' },
+      { event: '五專完全免試入學報到後聲明放棄錄取資格', date: '116.06.15' },
+      { event: '五專聯合免試入學報名', date: '116.06.18 ~ 06.24' },
+      { event: '五專聯合免試入學現場登記分發報到', date: '116.07.07' },
+      { event: '五專聯合免試入學報到後聲明放棄錄取資格', date: '116.07.12' },
+    ],
+  },
+  {
+    title: '特色招生、技優與實用技能學程',
+    icon: <Sparkles className="w-4 h-4" />,
+    items: [
+      { event: '特色招生專業群科甄選入學報名', date: '116.03.08 ~ 03.12' },
+      { event: '特色招生專業群科甄選入學術科測驗', date: '116.04.10 ~ 04.11' },
+      { event: '特色招生專業群科甄選入學術科測驗成績公告', date: '116.05.17' },
+      { event: '技優甄審入學、實用技能學程報名', date: '116.05.20 ~ 05.21' },
+      { event: '技優甄審、專業群科甄選入學及實用技能學程放榜', date: '116.06.11' },
+      { event: '技優甄審、專業群科甄選入學及實用技能學程報到', date: '116.06.14' },
+      { event: '技優甄審、專業群科甄選入學及實用技能學程放棄錄取資格', date: '116.06.15', note: '專業群科甄選入學含遞補截止' },
+      { event: '特色招生考試分發入學學科測驗報名', date: '116.06.16 ~ 06.18' },
+      { event: '特色招生考試分發入學學科測驗', date: '116.06.20' },
+      { event: '特色招生考試分發入學學科測驗分數網路查詢', date: '116.06.21' },
+      { event: '特色招生考試分發入學志願選填截止', date: '116.06.24' },
+      { event: '特色招生考試分發入學報名截止', date: '116.06.29' },
+      { event: '特色招生考試分發入學放榜', date: '116.07.06' },
+      { event: '特色招生專業群科甄選入學續招簡章公告截止', date: '116.07.07' },
+      { event: '特色招生考試分發入學報到', date: '116.07.08' },
+      { event: '特色招生考試分發入學報到後聲明放棄錄取資格', date: '116.07.12' },
+    ],
+  },
+  {
+    title: '藝才班甄選入學',
+    icon: <Sparkles className="w-4 h-4" />,
+    items: [
+      { event: '音樂、美術、舞蹈及戲劇班術科測驗報名', date: '116.02.22 ~ 03.08' },
+      { event: '音樂、舞蹈班術科測驗', date: '116.04.10 ~ 04.12' },
+      { event: '美術、戲劇班術科測驗', date: '116.04.17 ~ 04.18' },
+      { event: '藝才班術科測驗成績公告', date: '116.05.04' },
+      { event: '藝才班分發報名', date: '116.06.04 ~ 06.11' },
+      { event: '音樂、美術及舞蹈班分發志願選填', date: '116.06.21 ~ 06.25' },
+      { event: '藝才班分發放榜', date: '116.07.06' },
+      { event: '藝才班報到', date: '116.07.07' },
+      { event: '藝才班報到後聲明放棄錄取資格', date: '116.07.08' },
+    ],
+  },
+  {
+    title: '科學班、體育班與運動績優生',
+    icon: <Flag className="w-4 h-4" />,
+    items: [
+      { event: '科學班甄選入學報名', date: '116.02.18 ~ 03.03' },
+      { event: '科學班科學能力檢定', date: '116.03.13' },
+      { event: '科學班甄選入學報到', date: '116.04.08' },
+      { event: '科學班報到後聲明放棄錄取資格', date: '116.04.09' },
+      { event: '運動績優生甄審、甄試報名', date: '116.04.12 ~ 05.03' },
+      { event: '體育班及運動績優生獨招術科測驗報名', date: '116.05.17 ~ 05.19' },
+      { event: '體育班及運動績優生獨招術科測驗', date: '116.05.22' },
+      { event: '體育班及運動績優生獨招放榜', date: '116.05.24' },
+      { event: '運動績優生甄試術科檢定', date: '116.06.06' },
+      { event: '運動績優生甄審、甄試放榜', date: '116.06.21' },
+      { event: '體育班及運動績優生報到', date: '116.07.08' },
+      { event: '體育班及運動績優生報到後聲明放棄錄取資格', date: '116.07.12' },
+    ],
+  },
+  {
+    title: '其他適性入學管道',
+    icon: <Calendar className="w-4 h-4" />,
+    items: [
+      { event: '身心障礙學生適性輔導安置報名', date: '116.02.11 ~ 02.18', note: '臺北、新北、桃園、臺中及高雄市除外' },
+      { event: '建教合作班報名開始', date: '116.03.02' },
+      { event: '進修部非應屆畢業生免試入學報名開始', date: '116.03.08' },
+      { event: '身心障礙學生集中式特殊教育班能力評估', date: '116.04.10', note: '臺北、新北、桃園、臺中及高雄市除外' },
+      { event: '身心障礙學生適性輔導安置結果公告', date: '116.06.01', note: '臺北、新北、桃園、臺中及高雄市除外' },
+      { event: '建教合作班報到截止', date: '116.07.08' },
+    ],
+  },
 ];
 
 const OFFICIAL_SCHEDULE_115_CAP: ScheduleCategory[] = [
@@ -240,7 +392,7 @@ const OFFICAL_SCHEDULE_DEFAULT: ScheduleCategory[] = [
     }
 ];
 
-const getOfficialSchedule = (targetExam?: string) => {
+export const getOfficialSchedule = (targetExam?: string) => {
     switch (targetExam) {
         case '116gsat':
             return OFFICIAL_SCHEDULE_116_GSAT;
@@ -248,8 +400,17 @@ const getOfficialSchedule = (targetExam?: string) => {
             return OFFICIAL_SCHEDULE_116_AST;
         case '115tvet':
             return OFFICIAL_SCHEDULE_115_TVET;
-        case '115cap':
-            return OFFICIAL_SCHEDULE_115_CAP;
+        case '117cap':
+            return [{
+                title: '117 會考日程（預估）',
+                icon: <BookOpen className="w-4 h-4" />,
+                items: [
+                    { event: '國中教育會考', date: '117.05.20 ~ 05.21（預估）', note: '暫以 2028 年 5 月第三個週末推估，正式日期以官方公告為準' },
+                    { event: '報名、准考證與成績公告', date: '待公告', note: '正式日程公布後更新' },
+                ],
+            }];
+        case '116cap':
+            return OFFICIAL_SCHEDULE_116_CAP;
         case '115ast':
             return OFFICIAL_SCHEDULE_115_AST;
         default:
@@ -260,10 +421,15 @@ const getOfficialSchedule = (targetExam?: string) => {
 interface ImportantDatesProps {
   customDates: CustomDate[];
   setCustomDates: React.Dispatch<React.SetStateAction<CustomDate[]>>;
+  onDeleteCustomDate?: (id: string) => void;
   targetExam?: string;
+  onOpenOfficialSchedule?: () => void;
 }
 
-const ImportantDates: React.FC<ImportantDatesProps> = ({ customDates, setCustomDates, targetExam }) => {
+const ImportantDates: React.FC<ImportantDatesProps> = ({ customDates, setCustomDates, onDeleteCustomDate, targetExam, onOpenOfficialSchedule }) => {
+  const today = useToday();
+  const formId = useId();
+  const isEstimated = EXAM_PRESETS.find(exam => exam.id === targetExam)?.isEstimated || false;
   // Local UI state
   const [newTitle, setNewTitle] = useState('');
   const [newDate, setNewDate] = useState('');
@@ -292,6 +458,7 @@ const ImportantDates: React.FC<ImportantDatesProps> = ({ customDates, setCustomD
       id: Date.now().toString(),
       title: newTitle.trim(),
       date: newDate,
+      updatedAt: Date.now(),
     };
     
     // Update parent state
@@ -304,15 +471,15 @@ const ImportantDates: React.FC<ImportantDatesProps> = ({ customDates, setCustomD
 
   const deleteDate = (id: string) => {
     if (window.confirm('確定要刪除這個重要日程嗎？')) {
-      setCustomDates(prev => prev.filter(d => d.id !== id));
+      if (onDeleteCustomDate) onDeleteCustomDate(id);
+      else setCustomDates(prev => prev.filter(d => d.id !== id));
     }
   };
 
   const getDaysLeft = (dateStr: string) => {
-    const target = new Date(dateStr);
+    const target = new Date(`${dateStr.slice(0, 10)}T00:00:00`);
     target.setHours(0, 0, 0, 0);
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
+    const now = new Date(today);
     const diff = target.getTime() - now.getTime();
     return Math.ceil(diff / (1000 * 60 * 60 * 24));
   };
@@ -322,7 +489,7 @@ const ImportantDates: React.FC<ImportantDatesProps> = ({ customDates, setCustomD
       .map(d => ({ ...d, daysLeft: getDaysLeft(d.date) }))
       .filter(d => d.daysLeft >= 0)
       .sort((a, b) => a.daysLeft - b.daysLeft)[0];
-  }, [customDates]);
+  }, [customDates, today]);
 
   const nearestOfficialEvent = useMemo(() => {
     const categories = getOfficialSchedule(targetExam);
@@ -348,8 +515,7 @@ const ImportantDates: React.FC<ImportantDatesProps> = ({ customDates, setCustomD
         return null;
     };
 
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
+    const now = new Date(today);
 
     return allItems
       .map(item => {
@@ -361,234 +527,60 @@ const ImportantDates: React.FC<ImportantDatesProps> = ({ customDates, setCustomD
       })
       .filter(item => item.daysLeft >= 0)
       .sort((a, b) => a.daysLeft - b.daysLeft)[0];
-  }, [targetExam]);
+  }, [targetExam, today]);
+
+  const orderedDates = [...customDates].sort((a, b) => {
+    const aDays = getDaysLeft(a.date), bDays = getDaysLeft(b.date);
+    if ((aDays < 0) !== (bDays < 0)) return aDays < 0 ? 1 : -1;
+    return aDays < 0 ? bDays - aDays : aDays - bDays;
+  });
+  const upcomingCount = customDates.filter(item => getDaysLeft(item.date) >= 0).length;
 
   return (
-    <div className="w-full h-full flex flex-col bg-white/90 backdrop-blur-2xl rounded-[2rem] overflow-hidden border border-white/80 shadow-2xl shadow-indigo-100/60 relative">
-        {/* Decorative background blobs */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-400/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-400/10 rounded-full blur-3xl translate-y-1/3 -translate-x-1/3 pointer-events-none"></div>
+    <div className="dates-panel">
+      <header className="dates-header">
+        <div><p className="dates-eyebrow"><CalendarDays size={13} aria-hidden="true" /> IMPORTANT DATES</p><h3>重要日程</h3><p className="dates-subtitle">把值得留意的日子，放在心上。</p></div>
+        <button type="button" title="新增日程" aria-label={isAdding ? '收起新增日程' : '新增日程'} aria-expanded={isAdding} aria-controls={formId} onClick={() => setIsAdding(value => !value)} className="dates-add-toggle">{isAdding ? <X size={16} /> : <Plus size={16} />}<span>{isAdding ? '收起' : '新增'}</span></button>
+      </header>
 
-        <div className="p-6 flex-grow flex flex-col min-h-0 relative z-10">
-            <div className="flex justify-between items-center mb-6 flex-shrink-0">
-                <div className="flex items-center gap-3">
-                    <div className="p-3 bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-2xl shadow-lg shadow-indigo-200/50">
-                        <Flag className="w-5 h-5" />
-                    </div>
-                    <div>
-                        <h3 className="text-xl font-black text-slate-800 tracking-tight">重要日程</h3>
-                        <p className="text-xs text-slate-500 font-medium tracking-wider uppercase mt-0.5">Important Dates</p>
-                    </div>
-                </div>
-                <button 
-                    onClick={() => setIsAdding(!isAdding)}
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 shadow-sm ${isAdding ? 'bg-slate-100 text-slate-600 rotate-45' : 'bg-white text-indigo-600 border border-indigo-100 hover:bg-indigo-50 hover:scale-105 hover:shadow-indigo-100'}`}
-                    title="新增日程"
-                >
-                    <Plus className="w-5 h-5" />
-                </button>
-            </div>
+      <div className="dates-scroll">
+        {isAdding && <form id={formId} className="dates-composer" onSubmit={handleAddDate}>
+          <div className="dates-composer-heading"><span>記下一個重要的日子</span><small>自訂提醒</small></div>
+          <label>日程名稱<input type="text" aria-label="日程名稱" value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="例如：模擬考、志願選填" maxLength={15} autoFocus required /></label>
+          <div className="dates-composer-bottom"><label>日期<input type="date" aria-label="日程日期" value={newDate} onChange={e => setNewDate(e.target.value)} max="2030-12-31" required /></label><button type="submit" disabled={!newTitle.trim() || !newDate}><Plus size={14} aria-hidden="true" />儲存</button></div>
+        </form>}
 
-            {/* Scrollable Content Area */}
-            <div className="flex-grow min-h-0 overflow-y-auto pr-2 custom-scrollbar flex flex-col space-y-6">
-                
-                {/* Nearest Events Highlights */}
-                <AnimatePresence mode="popLayout">
-                {(nearestOfficialEvent || nearestEvent) && (
-                    <div className="flex flex-col gap-4 flex-shrink-0 pt-1">
-                        {/* Official Countdown Card */}
-                        {nearestOfficialEvent && (
-                            <motion.div 
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="relative overflow-hidden rounded-[1.5rem] bg-indigo-600 p-5 text-white shadow-xl shadow-indigo-200/50 flex flex-col group"
-                            >
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2"></div>
-                                <div className="relative z-10 flex items-center justify-between">
-                                    <div className="flex flex-col">
-                                        <div className="flex items-center gap-2 mb-2 opacity-90">
-                                            <div className="p-1 px-2 bg-white/20 rounded-md backdrop-blur-md border border-white/20">
-                                                <span className="text-[10px] font-bold tracking-widest uppercase">官方時程</span>
-                                            </div>
-                                        </div>
-                                        <h4 className="text-xl font-black leading-tight mb-1 truncate max-w-[180px]">{nearestOfficialEvent.event}</h4>
-                                        <div className="text-xs text-indigo-100 font-medium">日期：{nearestOfficialEvent.date}</div>
-                                    </div>
-                                    <div className="text-right flex flex-col items-end">
-                                        <div className="text-4xl font-black leading-none">{nearestOfficialEvent.daysLeft}</div>
-                                        <div className="text-[10px] font-bold uppercase tracking-tighter opacity-80 mt-1">DAYS TO GO</div>
-                                    </div>
-                                </div>
-                            </motion.div>
-                        )}
+        {(nearestOfficialEvent || nearestEvent) && <section className="dates-next" aria-label="接下來的重要日子">
+          <div className="dates-section-heading"><span><i />接下來，別錯過</span><small>{new Date(today).toLocaleDateString('zh-TW', { month: 'long', day: 'numeric' })}</small></div>
+          {nearestOfficialEvent && <div className="important-date-highlight dates-feature dates-feature--exam">
+            <div className="dates-feature-copy"><span className="dates-type"><BookOpen size={11} aria-hidden="true" />{isEstimated ? '考試參考・預估' : '考試參考日程'}</span><h4>{nearestOfficialEvent.event}</h4><p>{nearestOfficialEvent.date}</p></div>
+            <div className="dates-countdown"><span>{nearestOfficialEvent.daysLeft === 0 ? '就在今天' : '距離還有'}</span><div><strong className="text-4xl">{nearestOfficialEvent.daysLeft}</strong><small>天</small></div></div>
+          </div>}
+          {nearestEvent && <div className="important-date-highlight dates-feature dates-feature--personal">
+            <div className="dates-feature-copy"><span className="dates-type"><Flag size={11} aria-hidden="true" />我的重要提醒</span><h4>{nearestEvent.title}</h4><p>{nearestEvent.date.replaceAll('-', '.')}</p></div>
+            <div className="dates-countdown"><span>{nearestEvent.daysLeft === 0 ? '就在今天' : '距離還有'}</span><div><strong className="text-4xl">{nearestEvent.daysLeft}</strong><small>天</small></div></div>
+          </div>}
+        </section>}
 
-                        {/* Custom Countdown Card */}
-                        {nearestEvent && (
-                            <motion.div 
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="relative overflow-hidden rounded-[1.5rem] bg-gradient-to-br from-purple-500 to-indigo-600 p-5 text-white shadow-xl shadow-indigo-100/50 flex flex-col group"
-                            >
-                                <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-white/10 rounded-full blur-xl"></div>
-                                <div className="relative z-10 flex items-center justify-between">
-                                    <div className="flex flex-col">
-                                        <div className="flex items-center gap-2 mb-2 opacity-90">
-                                            <div className="p-1 px-2 bg-white/20 rounded-md backdrop-blur-md border border-white/20">
-                                                <span className="text-[10px] font-bold tracking-widest uppercase">重要提醒</span>
-                                            </div>
-                                        </div>
-                                        <h4 className="text-xl font-black leading-tight mb-1 truncate max-w-[180px]">{nearestEvent.title}</h4>
-                                        <div className="text-xs text-indigo-100 font-medium">{nearestEvent.date.replace(/-/g, '.')}</div>
-                                    </div>
-                                    <div className="text-right flex flex-col items-end">
-                                        <div className="text-4xl font-black leading-none">{nearestEvent.daysLeft}</div>
-                                        <div className="text-[10px] font-bold uppercase tracking-tighter opacity-80 mt-1">DAYS TO GO</div>
-                                    </div>
-                                </div>
-                            </motion.div>
-                        )}
-                    </div>
-                )}
-                </AnimatePresence>
-
-                {/* Add Date Form */}
-                <AnimatePresence>
-                {isAdding && (
-                    <motion.div 
-                        initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-                        animate={{ opacity: 1, height: 'auto', marginBottom: 0 }}
-                        exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                        className="overflow-hidden flex-shrink-0"
-                    >
-                        <form onSubmit={handleAddDate} className="p-5 bg-gradient-to-b from-indigo-50/50 to-white rounded-[1.5rem] border border-indigo-100 shadow-inner relative">
-                            <button 
-                                type="button" 
-                                onClick={() => setIsAdding(false)}
-                                className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
-                            >
-                                <X className="w-4 h-4" />
-                            </button>
-                            <h4 className="text-sm font-bold text-indigo-900 mb-4 flex items-center gap-2">
-                                <div className="p-1 bg-indigo-100 rounded-md text-indigo-600">
-                                    <Plus className="w-3.5 h-3.5" />
-                                </div>
-                                新增重要日程
-                            </h4>
-                            <div className="space-y-3">
-                                <div>
-                                    <input 
-                                        type="text" 
-                                        value={newTitle}
-                                        onChange={(e) => setNewTitle(e.target.value)}
-                                        placeholder="事項名稱 (限15字)"
-                                        maxLength={15}
-                                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-700 text-sm outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all shadow-sm"
-                                        autoFocus
-                                    />
-                                </div>
-                                <div className="flex gap-3">
-                                    <input 
-                                        type="date" 
-                                        value={newDate}
-                                        onChange={(e) => setNewDate(e.target.value)}
-                                        max="2030-12-31"
-                                        className="flex-grow bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-700 text-sm outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all shadow-sm"
-                                    />
-                                    <button 
-                                        type="submit" 
-                                        disabled={!newTitle.trim() || !newDate}
-                                        className="bg-indigo-600 text-white px-6 py-3 rounded-xl text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-indigo-200 hover:shadow-lg hover:shadow-indigo-300 active:scale-95"
-                                    >
-                                        儲存
-                                    </button>
-                                </div>
-                            </div>
-                        </form>
-                    </motion.div>
-                )}
-                </AnimatePresence>
-
-                {/* Custom Dates List */}
-                <div className="space-y-3 flex-shrink-0">
-                     <AnimatePresence mode="popLayout">
-                     {customDates.map((item) => {
-                    const daysLeft = getDaysLeft(item.date);
-                    const isNearest = nearestEvent && nearestEvent.id === item.id;
-                    const dateObj = new Date(item.date);
-                    
-                    return (
-                        <motion.div 
-                            layout
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
-                            key={item.id} 
-                            className={`group relative flex items-center p-4 rounded-[1.25rem] border transition-all duration-300 ${isNearest ? 'bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 shadow-sm' : 'bg-white/60 border-slate-200/60 hover:bg-white hover:border-slate-300 hover:shadow-md'}`}
-                        >
-                            {/* Date Box */}
-                            <div className={`flex flex-col items-center justify-center w-14 h-14 rounded-2xl mr-4 flex-shrink-0 transition-all duration-300 ${isNearest ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-200' : 'bg-slate-100 text-slate-600 group-hover:bg-indigo-50 group-hover:text-indigo-600'}`}>
-                                <span className="text-[10px] uppercase font-bold tracking-wider opacity-80 mb-0.5 leading-none mt-1">
-                                    {dateObj.toLocaleString('en-US', { month: 'short' })}
-                                </span>
-                                <span className="text-xl font-black leading-none">
-                                    {dateObj.getDate()}
-                                </span>
-                            </div>
-
-                            <div className="min-w-0 flex-1 mr-3">
-                                <div className={`text-base font-bold truncate mb-1 transition-colors ${isNearest ? 'text-indigo-900' : 'text-slate-700 group-hover:text-slate-900'}`}>{item.title}</div>
-                                <div className="flex items-center gap-2">
-                                    <span className={`text-xs font-medium px-2 py-0.5 rounded-md border ${daysLeft < 0 ? 'bg-slate-100 text-slate-500 border-slate-200' : isNearest ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-slate-50 text-slate-500 border-slate-200 group-hover:bg-indigo-50 group-hover:text-indigo-600 group-hover:border-indigo-100 transition-colors'}`}>
-                                        {daysLeft < 0 ? "已結束" : `還剩 ${daysLeft} 天`}
-                                    </span>
-                                </div>
-                            </div>
-                            
-                            <button 
-                                onClick={() => deleteDate(item.id)} 
-                                className="opacity-0 group-hover:opacity-100 w-9 h-9 flex items-center justify-center rounded-xl bg-red-50 text-red-400 hover:bg-red-500 hover:text-white transition-all duration-300 flex-shrink-0 shadow-sm"
-                            >
-                                <Trash2 className="w-4 h-4" />
-                            </button>
-                        </motion.div>
-                    );
-                 })}
-                 </AnimatePresence>
-                 {customDates.length === 0 && (
-                     <motion.div 
-                        initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                        className="flex flex-col items-center justify-center h-40 text-slate-400 border-2 border-dashed border-slate-200/60 rounded-[1.5rem] bg-white/40"
-                     >
-                         <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center mb-3">
-                            <CalendarDays className="w-6 h-6 text-slate-400" />
-                         </div>
-                         <span className="text-sm font-bold text-slate-500">尚無自訂日程</span>
-                         <span className="text-xs font-medium opacity-70 mt-1">點擊右上角 + 新增考試或活動</span>
-                     </motion.div>
-                 )}
-                </div>
-                
-                {/* Official Schedule Section */}
-                <div className="mt-4 pt-4 border-t border-slate-200/60 flex-shrink-0 pb-8">
-                     <button 
-                        onClick={() => setIsScheduleModalOpen(true)} 
-                    className="flex items-center justify-between w-full p-3 rounded-2xl hover:bg-slate-50 transition-all duration-300 group border border-transparent hover:border-slate-200/60"
-                 >
-                     <div className="flex items-center gap-3">
-                         <div className="p-2 bg-slate-100 rounded-xl group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors text-slate-500">
-                             <BookOpen className="w-4 h-4" />
-                         </div>
-                         <span className="text-sm font-bold text-slate-700 group-hover:text-slate-900 transition-colors">官方參考日程</span>
-                     </div>
-                     <div className="p-1.5 rounded-xl transition-all duration-300 text-slate-400 group-hover:bg-slate-100 group-hover:text-slate-600">
-                        <ExternalLink className="w-4 h-4" />
-                     </div>
-                 </button>
-                 
-                 {typeof document !== 'undefined' && createPortal(
+        <section className="dates-personal" aria-label="我的自訂日程">
+          <div className="dates-section-heading"><span>我的日程</span><small>{customDates.length ? `${upcomingCount} 件待到來` : '為下一步，留個提醒'}</small></div>
+          <div className="dates-timeline">{orderedDates.map(item => {
+            const daysLeft = getDaysLeft(item.date);
+            const date = new Date(`${item.date.slice(0, 10)}T00:00:00`);
+            return <div className="dates-timeline-item" key={item.id} data-past={daysLeft < 0} data-today={daysLeft === 0}>
+              <time className="dates-date-tile" dateTime={item.date}><span>{date.getMonth() + 1} 月</span><strong>{date.getDate().toString().padStart(2, '0')}</strong></time>
+              <div className="dates-item-copy"><h4>{item.title}</h4><p><span>{daysLeft < 0 ? '已結束' : daysLeft === 0 ? '就是今天' : `還剩 ${daysLeft} 天`}</span><small>{date.getFullYear()} 年</small></p></div>
+              <button type="button" className="dates-delete" aria-label={`刪除日程：${item.title}`} onClick={() => deleteDate(item.id)}><Trash2 size={14} /></button>
+            </div>;
+          })}</div>
+          {customDates.length === 0 && <div className="dates-empty"><span aria-hidden="true"><CalendarDays size={25} strokeWidth={1.3} /><i /></span><strong>下一個重要日子，是哪一天？</strong><p>加入考試、報名或自己的小目標，<br />讓期待的日子，有個位置。</p><button type="button" onClick={() => setIsAdding(true)}><Plus size={13} aria-hidden="true" />新增第一個日程</button></div>}
+        </section>
+      </div>
+      <button type="button" className="dates-official-link" onClick={() => { if (onOpenOfficialSchedule) onOpenOfficialSchedule(); else setIsScheduleModalOpen(true); }}><span className="dates-official-icon"><BookOpen size={17} /></span><span><strong>官方參考日程</strong><small>查看報名、考試與成績等完整時程</small></span><ExternalLink size={15} /></button>
+      {typeof document !== 'undefined' && createPortal(
                    <AnimatePresence>
                      {isScheduleModalOpen && (
-                         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+                         <ModalLayer className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
                             <motion.div 
                               initial={{ opacity: 0, scale: 0.95, y: 10 }}
                               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -645,14 +637,11 @@ const ImportantDates: React.FC<ImportantDatesProps> = ({ customDates, setCustomD
                                  </button>
                               </div>
                             </motion.div>
-                         </div>
+                         </ModalLayer>
                      )}
                    </AnimatePresence>,
                    document.body
                  )}
-                </div>
-            </div>
-        </div>
     </div>
   );
 };

@@ -1,17 +1,23 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CheckCircle2, KeyRound, Loader2, Lock, LogOut, Mail, MonitorSmartphone, Shield, Trash2, UserCircle } from 'lucide-react';
+import ModalLayer from './ModalLayer';
+import './AccountPage.css';
+import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { ArrowLeft, ArrowUpRight, CalendarDays, CheckCircle2, ChevronRight, Cloud, Fingerprint, KeyRound, Loader2, Lock, LogOut, Mail, MonitorSmartphone, RefreshCw, Shield, Trash2, UserCircle } from 'lucide-react';
 import { authService } from '../services/authService';
 import { User } from '../types';
 
 interface AccountPageProps {
   currentUser: User;
   onBack: () => void;
-  onLogout: () => void | Promise<void>;
+  onLogout: (discardData?: boolean) => void | Promise<void>;
+  onPrepareLogout: () => boolean;
   onUserUpdate: (user: User) => void;
+  onSync: () => void;
+  isSyncing: boolean;
 }
 
 type AccountSection = 'overview' | 'security' | 'devices';
-type LoadingAction = 'sessions' | 'passkey' | 'password' | 'logout' | 'device' | 'profile' | null;
+type LoadingAction = 'sessions' | 'passkey' | 'password' | 'logout' | 'device' | 'profile' | 'delete' | null;
 
 const MIN_PASSWORD_LENGTH = 8;
 const MAX_PASSWORD_LENGTH = 128;
@@ -34,7 +40,7 @@ const passwordStrength = (value: string) => {
   return Math.min(3, Math.max(1, score <= 1 ? 1 : score <= 3 ? 2 : 3));
 };
 
-const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onBack, onLogout, onUserUpdate }) => {
+const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onBack, onLogout, onPrepareLogout, onUserUpdate, onSync, isSyncing }) => {
   const [section, setSection] = useState<AccountSection>('overview');
   const [sessions, setSessions] = useState<any[]>([]);
   const [loadingAction, setLoadingAction] = useState<LoadingAction>(null);
@@ -45,6 +51,8 @@ const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onBack, onLogout
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [confirmDevice, setConfirmDevice] = useState<{ id: string; name: string } | 'others' | 'all' | null>(null);
+  const [isDeleteAccountOpen, setIsDeleteAccountOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
 
   const currentDeviceId = useMemo(() => authService.getDeviceId(), []);
   const strength = passwordStrength(newPassword);
@@ -105,6 +113,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onBack, onLogout
     const passwordError = validatePassword(newPassword);
     if (passwordError) return setError(passwordError);
     if (oldPassword === newPassword) return setError('新密碼不能與目前密碼相同');
+    if (!onPrepareLogout()) return;
 
     setLoadingAction('password');
     const res = await authService.changePassword(currentUser.email, oldPassword, newPassword);
@@ -121,6 +130,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onBack, onLogout
   };
 
   const handleRemoveSession = async (deviceId: string) => {
+    if (deviceId === currentDeviceId && !onPrepareLogout()) return;
     setLoadingAction('device');
     clearNotice();
     const res = await authService.removeSession(currentUser.email, '', deviceId);
@@ -131,7 +141,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onBack, onLogout
         return;
       }
       await fetchSessions();
-      setMessage('裝置已移除');
+      setMessage(res.message || '該裝置的登入已撤銷');
     } else {
       setError(res.message || '移除裝置失敗');
     }
@@ -145,7 +155,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onBack, onLogout
     if (res.success) {
       setConfirmDevice(null);
       await fetchSessions();
-      setMessage('其他裝置已登出');
+      setMessage(res.message || '其他裝置的登入已撤銷');
     } else {
       setError(res.message || '登出其他裝置失敗');
     }
@@ -153,6 +163,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onBack, onLogout
   };
 
   const handleLogoutAllSessions = async () => {
+    if (!onPrepareLogout()) return;
     setLoadingAction('device');
     clearNotice();
     const res = await authService.removeAllSessions(currentUser.email, '', false);
@@ -165,6 +176,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onBack, onLogout
   };
 
   const handleLogoutCurrent = async () => {
+    if (!onPrepareLogout()) return;
     setLoadingAction('logout');
     clearNotice();
     const res = await authService.removeSession(currentUser.email, '', currentDeviceId);
@@ -176,6 +188,24 @@ const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onBack, onLogout
     await onLogout();
   };
 
+  const handleDeleteAccount = async () => {
+    clearNotice();
+    if (deleteConfirmation !== '刪除') {
+      setError('請輸入「刪除」以確認永久刪除帳號');
+      return;
+    }
+
+    setLoadingAction('delete');
+    const res = await authService.deleteAccount();
+    if (!res.success) {
+      setLoadingAction(null);
+      setError(res.message || '刪除帳號失敗');
+      return;
+    }
+
+    await onLogout(true);
+  };
+
   const navItems: { id: AccountSection; label: string; caption: string; icon: React.ReactNode }[] = [
     { id: 'overview', label: '帳號總覽', caption: '個人資料與登入狀態', icon: <UserCircle className="h-5 w-5" /> },
     { id: 'security', label: '安全設定', caption: '密碼與 Passkey', icon: <Shield className="h-5 w-5" /> },
@@ -183,102 +213,89 @@ const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onBack, onLogout
   ];
 
   return (
-    <main id="main-content" className="mx-auto max-w-7xl px-4 pb-12 pt-4 sm:px-6 lg:px-8">
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <button onClick={onBack} className="inline-flex h-11 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-sm font-black text-slate-600 shadow-sm transition-all hover:border-slate-300 hover:text-slate-950">
-          <ArrowLeft className="h-4 w-4" />
-          返回首頁
-        </button>
-        <div className="hidden items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700 sm:flex">
-          <CheckCircle2 className="h-4 w-4" />
-          已登入
+    <main id="main-content" className="account-page">
+      <button onClick={onBack} className="account-back"><ArrowLeft size={15} />返回首頁</button>
+      <header className="account-heading">
+        <div>
+          <p className="account-eyebrow"><span />ACCOUNT CENTER</p>
+          <h1>你的帳號，<span>自在管理。</span></h1>
+          <p className="account-intro">管理個人資料、登入安全與裝置，安心專注每一天的學習。</p>
         </div>
-      </div>
+        <span className="account-status"><CheckCircle2 size={14} />已登入</span>
+      </header>
 
-      <section className="mb-6 overflow-hidden rounded-[1.75rem] border border-indigo-100 bg-white shadow-xl shadow-slate-200/60">
-        <div className="grid gap-6 p-6 md:grid-cols-[1fr_auto] md:items-end md:p-8">
-          <div className="min-w-0">
-            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-indigo-600">Account Center</p>
-            <h1 className="mt-3 truncate text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">{currentUser.name}</h1>
-            <div className="mt-3 flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-500">
-              <Mail className="h-4 w-4 flex-shrink-0" />
-              <span className="truncate">{currentUser.email}</span>
-            </div>
+      <div className="account-layout">
+        <aside className="account-sidebar">
+          <div className="account-identity">
+            <div className="account-avatar">{currentUser.name.charAt(0).toUpperCase()}<span><CheckCircle2 size={14} /></span></div>
+            <h2>{currentUser.name}</h2>
+            <p title={currentUser.email}>{currentUser.email}</p>
+            <span className="account-member">學習，從這裡繼續</span>
+            <dl className="account-dates">
+              <div><dt><CalendarDays size={14} />註冊日期</dt><dd>{currentUser.registrationDate || '尚無紀錄'}</dd></div>
+              <div><dt><CheckCircle2 size={14} />最近登入</dt><dd>{currentUser.lastLoginDate || '尚無紀錄'}</dd></div>
+            </dl>
           </div>
-          <div className="grid grid-cols-2 gap-3 sm:min-w-[340px]">
-            <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
-              <div className="text-[10px] font-black uppercase tracking-widest text-indigo-400">註冊時間</div>
-              <div className="mt-1 text-sm font-black text-slate-900">{currentUser.registrationDate || '-'}</div>
-            </div>
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-              <div className="text-[10px] font-black uppercase tracking-widest text-emerald-500">最近登入</div>
-              <div className="mt-1 text-sm font-black text-slate-900">{currentUser.lastLoginDate || '-'}</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {(message || error) && (
-        <div className={`mb-5 rounded-2xl border px-4 py-3 text-sm font-bold ${error ? 'border-red-100 bg-red-50 text-red-600' : 'border-emerald-100 bg-emerald-50 text-emerald-700'}`}>
-          {error || message}
-        </div>
-      )}
-
-      <div className="grid gap-5 lg:grid-cols-[290px_minmax(0,1fr)] lg:gap-6">
-        <aside className="grid grid-cols-3 gap-1.5 rounded-[1.25rem] border border-slate-200 bg-white p-1.5 shadow-sm sm:gap-2 sm:p-2 lg:block lg:rounded-[1.5rem] lg:self-start">
-          {navItems.map((item) => (
-            <button key={item.id} onClick={() => setSection(item.id)} className={`flex min-h-[88px] w-full flex-col items-center justify-start gap-2 rounded-2xl px-2 py-3 text-center transition-all sm:min-h-[92px] lg:mb-1 lg:min-h-0 lg:flex-row lg:justify-start lg:gap-3 lg:px-4 lg:text-left lg:last:mb-0 ${section === item.id ? 'border border-indigo-100 bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}>
-              <span className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl lg:h-10 lg:w-10 ${section === item.id ? 'bg-white text-indigo-600 shadow-sm' : 'bg-slate-100 text-slate-500'}`}>{item.icon}</span>
-              <span className="min-w-0 w-full lg:w-auto">
-                <span className="block truncate text-[12px] font-black leading-tight sm:text-sm">{item.label}</span>
-                <span className={`mt-1 block text-[10px] font-semibold leading-tight line-clamp-2 sm:text-xs lg:mt-0.5 lg:truncate ${section === item.id ? 'text-indigo-400' : 'text-slate-400'}`}>{item.caption}</span>
-              </span>
-            </button>
-          ))}
+          <div className="account-sidebar-note"><Shield size={19} /><div><strong>讓學習紀錄跟著你</strong><p>定期同步資料，跨裝置也能接續學習。</p></div></div>
         </aside>
 
-        <section className="min-w-0">
+        <div className="account-workspace">
+          <nav className="account-nav" aria-label="帳號設定分類">
+            {navItems.map((item) => (
+              <button key={item.id} onClick={() => { setSection(item.id); clearNotice(); }} aria-pressed={section === item.id}>
+                <span className="account-nav-icon">{item.icon}</span>
+                <span><strong>{item.label}</strong><small>{item.caption}</small></span>
+                <ChevronRight size={14} />
+              </button>
+            ))}
+          </nav>
+
+          {(message || error) && <div role={error ? 'alert' : 'status'} className={`account-notice ${error ? 'account-notice-error' : ''}`}>{error || message}</div>}
+
+          <section className="account-content" aria-label={navItems.find(item => item.id === section)?.label}>
           {section === 'overview' && (
-            <div className="grid gap-4 md:grid-cols-2">
-              <form onSubmit={handleUpdateProfile} className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50 text-2xl font-black text-indigo-700">{currentUser.name.charAt(0).toUpperCase()}</div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-black uppercase tracking-widest text-slate-400">Profile</div>
-                    <div className="mt-1 truncate text-xl font-black text-slate-950">{currentUser.name}</div>
-                    <div className="mt-1 truncate text-sm font-semibold text-slate-500">{currentUser.email}</div>
-                  </div>
-                </div>
-                <label className="mt-5 block">
-                  <span className="mb-1.5 block text-xs font-black uppercase tracking-widest text-slate-500">顯示名稱</span>
-                  <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={20} className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition-all focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10" />
-                </label>
-                <button type="submit" disabled={loadingAction === 'profile' || displayName.trim() === currentUser.name} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-indigo-100 bg-indigo-50 px-5 py-3 text-sm font-black text-indigo-700 transition-all hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
-                  {loadingAction === 'profile' && <Loader2 className="h-4 w-4 animate-spin" />}
-                  儲存個人資料
-                </button>
+            <div className="account-overview">
+              <form onSubmit={handleUpdateProfile} className="account-card account-profile">
+                <div className="account-card-heading"><span className="account-card-icon"><UserCircle size={20} /></span><div><h2>個人資料</h2><p>用你喜歡的名字，開始每一天。</p></div><span className="account-card-index">01</span></div>
+                <label className="account-field"><span>顯示名稱 <small>最多 20 個字</small></span><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={20} required autoComplete="nickname" /></label>
+                <div className="account-email"><span>電子郵件</span><div><Mail size={16} /><span>{currentUser.email}</span><Lock size={13} /></div><small>此信箱用於登入與帳號識別。</small></div>
+                <div className="account-form-footer"><span>{displayName.trim() === currentUser.name ? '個人資料已是最新' : '你有尚未儲存的變更'}</span><button type="submit" disabled={loadingAction === 'profile' || !displayName.trim() || displayName.trim() === currentUser.name} className="account-primary">{loadingAction === 'profile' ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}儲存變更</button></div>
               </form>
 
-              <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="text-xs font-black uppercase tracking-widest text-slate-400">Quick Actions</div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <button onClick={() => setSection('security')} className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-left text-indigo-700 transition-all hover:border-indigo-200 hover:bg-indigo-100"><KeyRound className="mb-3 h-5 w-5" /><div className="text-sm font-black">更新安全設定</div></button>
-                  <button onClick={() => setSection('devices')} className="rounded-2xl border border-teal-100 bg-teal-50 p-4 text-left text-teal-700 transition-all hover:border-teal-200 hover:bg-teal-100"><MonitorSmartphone className="mb-3 h-5 w-5" /><div className="text-sm font-black">查看登入裝置</div></button>
-                  <button onClick={fetchSessions} disabled={loadingAction === 'sessions'} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left text-slate-600 transition-all hover:border-slate-300 hover:bg-white disabled:opacity-60">{loadingAction === 'sessions' ? <Loader2 className="mb-3 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mb-3 h-5 w-5" />}<div className="text-sm font-black">重新整理狀態</div></button>
-                </div>
+              <div className="account-card account-sync">
+                <div className="account-sync-top"><span className="account-cloud"><Cloud size={25} /></span><span className="account-small-label">CLOUD SYNC</span></div>
+                <h2>你的努力，隨時接續。</h2>
+                <p>將學習紀錄同步到雲端，<br />在不同裝置延續你的進度。</p>
+                <button onClick={onSync} disabled={isSyncing} className="account-sync-button">{isSyncing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}{isSyncing ? '同步資料中…' : '立即同步資料'}<ArrowUpRight size={16} /></button>
+                <span className="account-sync-caption">每一份累積，都值得好好保存。</span>
               </div>
 
-              <button onClick={handleLogoutCurrent} disabled={loadingAction === 'logout'} className="md:col-span-2 flex items-center justify-between rounded-[1.5rem] border border-red-100 bg-red-50 p-5 text-left text-red-600 transition-all hover:bg-red-100 disabled:opacity-60">
-                <span><span className="block text-sm font-black">登出目前裝置</span><span className="mt-1 block text-xs font-semibold text-red-400">此裝置會停止同步，其他裝置不受影響。</span></span>
-                {loadingAction === 'logout' ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogOut className="h-5 w-5" />}
-              </button>
+              <div className="account-card account-shortcuts">
+                <div className="account-card-heading"><div><h2>登入與安全</h2><p>為帳號多一份安心。</p></div><span className="account-card-index">02</span></div>
+                <button onClick={() => setSection('security')} className="account-action-row"><span className="account-action-icon"><Fingerprint size={21} /></span><span><strong>密碼與 Passkey</strong><small>更新密碼，或使用生物辨識快速登入</small></span><ArrowUpRight size={17} /></button>
+                <button onClick={() => setSection('devices')} className="account-action-row"><span className="account-action-icon"><MonitorSmartphone size={21} /></span><span><strong>登入裝置</strong><small>{loadingAction === 'sessions' ? '正在載入裝置…' : `查看與管理 ${sessions.length} 個已登入裝置`}</small></span><ArrowUpRight size={17} /></button>
+                <button onClick={fetchSessions} disabled={loadingAction === 'sessions'} className="account-refresh">{loadingAction === 'sessions' ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}重新整理登入狀態</button>
+              </div>
+
+              <div className="account-card account-operations">
+                <div className="account-card-heading"><div><h2>帳號操作</h2><p>管理目前的登入狀態與帳號。</p></div><span className="account-card-index">03</span></div>
+                <button onClick={handleLogoutCurrent} disabled={loadingAction === 'logout'} className="account-action-row"><span className="account-action-icon"><LogOut size={20} /></span><span><strong>登出目前裝置</strong><small>其他裝置仍會保持登入</small></span>{loadingAction === 'logout' ? <Loader2 size={17} className="animate-spin" /> : <ChevronRight size={17} />}</button>
+                <div className="account-delete-row"><div><strong>永久刪除帳號</strong><p>雲端與本機資料將永久移除，無法復原。</p></div><button onClick={() => { clearNotice(); setDeleteConfirmation(''); setIsDeleteAccountOpen(true); }} aria-expanded={isDeleteAccountOpen}><Trash2 size={14} />刪除帳號</button></div>
+                {isDeleteAccountOpen && (
+                  <div className="account-delete-confirm">
+                    <label htmlFor="account-delete-confirmation">請輸入「刪除」以確認永久刪除帳號</label>
+                    <input id="account-delete-confirmation" value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} autoComplete="off" placeholder="刪除" />
+                    <div><button onClick={() => { setIsDeleteAccountOpen(false); setDeleteConfirmation(''); }} disabled={loadingAction === 'delete'}>取消</button><button onClick={handleDeleteAccount} disabled={loadingAction === 'delete' || deleteConfirmation !== '刪除'}>{loadingAction === 'delete' && <Loader2 size={14} className="animate-spin" />}永久刪除</button></div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
           {section === 'security' && (
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-              <form onSubmit={handleChangePassword} className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm">
-                <h2 className="text-xl font-black text-slate-950">修改密碼</h2>
+            <div className="grid gap-4 md:grid-cols-2">
+              <form onSubmit={handleChangePassword} className="h-full rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-xl font-black text-slate-950">修改密碼</h2><p className="mt-2 text-sm text-slate-500">至少 8 個字元，包含英文字母與數字。更新後需重新登入。</p>
                 <div className="mt-5 grid gap-4">
                   <label className="block"><span className="mb-1.5 block text-xs font-black uppercase tracking-widest text-slate-500">目前密碼</span><input type="password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} required maxLength={MAX_PASSWORD_LENGTH} autoComplete="current-password" className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-4 py-3 text-sm font-semibold outline-none transition-all focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10" /></label>
                   <label className="block"><span className="mb-1.5 block text-xs font-black uppercase tracking-widest text-slate-500">新密碼</span><input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={MIN_PASSWORD_LENGTH} maxLength={MAX_PASSWORD_LENGTH} autoComplete="new-password" className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-4 py-3 text-sm font-semibold outline-none transition-all focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10" /><div className="mt-2 flex gap-1.5">{[1, 2, 3].map((step) => <span key={step} className={`h-1.5 flex-1 rounded-full ${step <= strength ? 'bg-indigo-500' : 'bg-slate-100'}`} />)}</div></label>
@@ -287,31 +304,36 @@ const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onBack, onLogout
                 <button type="submit" disabled={loadingAction === 'password'} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3.5 text-sm font-black text-white shadow-lg shadow-indigo-200 transition-all hover:bg-indigo-700 disabled:opacity-60 sm:w-auto">{loadingAction === 'password' && <Loader2 className="h-5 w-5 animate-spin" />}儲存新密碼</button>
               </form>
 
-              <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="h-full rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-600"><Lock className="h-6 w-6" /></div>
-                <h2 className="mt-4 text-xl font-black text-slate-950">Passkey</h2>
+                <h2 className="mt-4 text-xl font-black text-slate-950">Passkey 快速登入</h2>
                 <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500">使用系統支援的生物辨識或安全金鑰，之後可以更快登入。</p>
+                {!authService.isPasskeySupported() && <p className="mt-4 text-sm text-slate-500">此瀏覽器目前不支援 Passkey，請改用支援的瀏覽器或裝置。</p>}
                 <button onClick={handleRegisterPasskey} disabled={loadingAction === 'passkey' || !authService.isPasskeySupported()} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-violet-100 bg-violet-50 px-5 py-3.5 text-sm font-black text-violet-700 transition-all hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50">{loadingAction === 'passkey' ? <Loader2 className="h-5 w-5 animate-spin" /> : <KeyRound className="h-5 w-5" />}新增 Passkey</button>
               </div>
             </div>
           )}
 
           {section === 'devices' && (
-            <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="w-full rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div><h2 className="text-xl font-black text-slate-950">已登入裝置</h2><p className="mt-1 text-sm font-semibold text-slate-500">管理目前保留登入狀態的瀏覽器與裝置。</p></div>
                 <button onClick={fetchSessions} disabled={loadingAction === 'sessions'} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-600 transition-all hover:bg-slate-50 disabled:opacity-60">{loadingAction === 'sessions' && <Loader2 className="h-4 w-4 animate-spin" />}重新整理</button>
               </div>
 
-              {confirmDevice && (
-                <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 p-4">
-                  <div className="font-black text-red-700">確認移除登入狀態</div>
-                  <div className="mt-1 text-sm font-semibold text-red-500">{confirmDevice === 'others' ? '其他裝置將需要重新登入。' : confirmDevice === 'all' ? '所有裝置都會被登出，包含目前這台裝置。' : `${confirmDevice.name} 將被登出。`}</div>
-                  <div className="mt-3 flex gap-2"><button onClick={() => setConfirmDevice(null)} className="rounded-xl bg-white px-4 py-2 text-sm font-black text-slate-600">取消</button><button onClick={() => confirmDevice === 'others' ? handleRemoveOtherSessions() : confirmDevice === 'all' ? handleLogoutAllSessions() : handleRemoveSession(confirmDevice.id)} disabled={loadingAction === 'device'} className="inline-flex items-center gap-2 rounded-xl bg-red-500 px-4 py-2 text-sm font-black text-white disabled:opacity-60">{loadingAction === 'device' && <Loader2 className="h-4 w-4 animate-spin" />}確認移除</button></div>
-                </div>
+              {confirmDevice && createPortal(
+                <ModalLayer className="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="session-confirm-title">
+                  <button type="button" onClick={() => !loadingAction && setConfirmDevice(null)} className="absolute inset-0 cursor-default bg-slate-950/65 backdrop-blur-sm" aria-label="取消登出操作" />
+                  <div className="relative w-full max-w-md overflow-hidden rounded-[2rem] border border-white/70 bg-white shadow-[0_28px_80px_rgba(15,23,42,.38)]">
+                    <div className="relative overflow-hidden bg-gradient-to-br from-rose-500 to-red-600 px-6 pb-7 pt-6 text-white"><div className="absolute -right-8 -top-10 h-32 w-32 rounded-full border-[14px] border-white/15" /><div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15"><LogOut className="h-6 w-6" /></div><h2 id="session-confirm-title" className="relative mt-4 text-xl font-black">確認登出裝置</h2><p className="relative mt-2 text-sm font-semibold leading-relaxed text-rose-50/90">{confirmDevice === 'others' ? '其他已登入裝置將被登出，需要重新登入才能使用。' : confirmDevice === 'all' ? '所有裝置都會被登出，包含目前這台裝置。' : `${confirmDevice.name} 將被登出。`}</p></div>
+                    <div className="p-6"><div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-xs font-bold leading-relaxed text-rose-700">登入撤銷後，後續受保護的資料請求會被拒絕。裝置畫面可能在下一次連線檢查時才更新；已顯示的資料不會自動消失。</div><div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button onClick={() => setConfirmDevice(null)} disabled={loadingAction === 'device'} className="rounded-xl bg-slate-100 px-5 py-3 text-sm font-black text-slate-600 transition hover:bg-slate-200 disabled:opacity-60">取消</button><button onClick={() => confirmDevice === 'others' ? handleRemoveOtherSessions() : confirmDevice === 'all' ? handleLogoutAllSessions() : handleRemoveSession(confirmDevice.id)} disabled={loadingAction === 'device'} className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-500 px-5 py-3 text-sm font-black text-white shadow-lg shadow-red-200 transition hover:bg-red-600 disabled:opacity-60">{loadingAction === 'device' && <Loader2 className="h-4 w-4 animate-spin" />}確認登出</button></div></div>
+                  </div>
+                </ModalLayer>,
+                document.body,
               )}
 
               <div className="space-y-3">
+                {loadingAction === 'sessions' && <div role="status" className="account-device-loading"><Loader2 size={18} className="animate-spin" />正在載入登入裝置…</div>}
                 {sessions.map((session, index) => {
                   const isCurrent = session.deviceId === currentDeviceId;
                   return (
@@ -344,8 +366,10 @@ const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onBack, onLogout
               )}
             </div>
           )}
-        </section>
+          </section>
+        </div>
       </div>
+      <footer className="account-footer"><Lock size={12} />專注學習，帳號設定在這裡安心管理。</footer>
     </main>
   );
 };

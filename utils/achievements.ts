@@ -1,4 +1,4 @@
-import { AppData, StudySession, TodoItem } from '../types';
+import { AppData, StudySession, StreakData } from '../types';
 
 export interface Achievement {
   id: string;
@@ -9,9 +9,103 @@ export interface Achievement {
   condition: (data: AppData) => boolean;
 }
 
-const getStudyTimeBySubject = (sessions: StudySession[], subjectId: string) => {
-  return sessions.filter(s => s.subjectId === subjectId).reduce((acc, s) => acc + s.durationMinutes, 0);
+const ACHIEVEMENT_SUBJECTS: Record<string, string> = {
+  chinese: 'chinese',
+  chinese1: 'chinese',
+  chinese2: 'chinese',
+  writing: 'chinese',
+  '國綜': 'chinese',
+  '國寫': 'chinese',
+  '寫作測驗': 'chinese',
+  '國文': 'chinese',
+  english: 'english',
+  english_read: 'english',
+  english_listen: 'english',
+  '英語 (閱讀)': 'english',
+  '英語 (聽力)': 'english',
+  '英文': 'english',
+  math: 'math',
+  math_a: 'math',
+  math_b: 'math',
+  '數學': 'math',
+  '數學 a': 'math',
+  '數學 b': 'math',
+  '數學a': 'math',
+  '數學b': 'math',
+  '數學 a/b': 'math',
+  '數學a/b': 'math',
+  math_ab: 'math',
+  '數學甲': 'math',
+  '數學乙': 'math',
+  social: 'social',
+  '社會': 'social',
+  history: 'social',
+  geography: 'social',
+  civics: 'social',
+  '歷史': 'social',
+  '地理': 'social',
+  '公民與社會': 'social',
+  natural: 'natural',
+  '自然': 'natural',
+  physics: 'natural',
+  chemistry: 'natural',
+  biology: 'natural',
+  '物理': 'natural',
+  '化學': 'natural',
+  '生物': 'natural',
 };
+
+const getCanonicalSubjectId = (session: StudySession): string => {
+  const subjectId = session.subjectId.trim().toLowerCase();
+  const subjectName = session.subjectName.trim().toLowerCase();
+  return ACHIEVEMENT_SUBJECTS[subjectId] || ACHIEVEMENT_SUBJECTS[subjectName] || subjectId;
+};
+
+export const matchesAchievementSubject = (session: StudySession, subjectId: string) =>
+  getCanonicalSubjectId(session) === subjectId;
+
+export const getStudyTimeBySubject = (sessions: StudySession[], subjectId: string) =>
+  sessions
+    .filter(session => matchesAchievementSubject(session, subjectId))
+    .reduce((acc, session) => acc + session.durationMinutes, 0);
+
+export const getLocalDateKey = (timestamp: number) => {
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// Rebuild goal streaks after merging offline/device history. Incrementing only
+// when a timer finishes on this device misses goals completed across devices.
+export const reconcileStudyStreak = (sessions: StudySession[], goal: number, previous: StreakData, now = Date.now()): StreakData => {
+  const daily = new Map<string, number>();
+  for (const session of sessions) {
+    const key = getLocalDateKey(session.timestamp);
+    daily.set(key, (daily.get(key) || 0) + session.durationMinutes);
+  }
+  const target = Number.isFinite(goal) && goal > 0 ? goal : 120;
+  const todayKey = getLocalDateKey(now);
+  const days = [...daily].filter(([key, minutes]) => key <= todayKey && minutes >= target)
+    .map(([key]) => Date.parse(`${key}T00:00:00Z`) / 86400000).sort((a, b) => a - b);
+  let run = 0, longest = 0, lastDay = -Infinity;
+  for (const day of days) {
+    run = day === lastDay + 1 ? run + 1 : 1;
+    longest = Math.max(longest, run);
+    lastDay = day;
+  }
+  const today = Date.parse(`${getLocalDateKey(now)}T00:00:00Z`) / 86400000;
+  return {
+    current: lastDay === today || lastDay === today - 1 ? run : 0,
+    max: Math.max(previous.max, longest),
+    lastDate: days.length ? new Date(lastDay * 86400000).toISOString().slice(0, 10) : previous.lastDate,
+  };
+};
+
+/** Medal streaks count study days independently of the configurable daily goal. */
+export const getStudyDayStreak = (sessions: StudySession[], now = Date.now()) =>
+  reconcileStudyStreak(sessions, 1, { current: 0, max: 0, lastDate: '' }, now);
 
 const getTotalStudyTime = (sessions: StudySession[]) => {
   return sessions.reduce((acc, s) => acc + s.durationMinutes, 0);
@@ -34,7 +128,7 @@ const getSessionsByDayOfWeek = (sessions: StudySession[], days: number[]) => {
 const getDailyStudyTimes = (sessions: StudySession[]) => {
   const daily: Record<string, number> = {};
   sessions.forEach(s => {
-    const date = new Date(s.timestamp).toISOString().split('T')[0];
+    const date = getLocalDateKey(s.timestamp);
     daily[date] = (daily[date] || 0) + s.durationMinutes;
   });
   return daily;
@@ -43,17 +137,18 @@ const getDailyStudyTimes = (sessions: StudySession[]) => {
 const getDailySubjects = (sessions: StudySession[]) => {
   const daily: Record<string, Set<string>> = {};
   sessions.forEach(s => {
-    const date = new Date(s.timestamp).toISOString().split('T')[0];
+    const date = getLocalDateKey(s.timestamp);
     if (!daily[date]) daily[date] = new Set();
-    daily[date].add(s.subjectId);
+    daily[date].add(getCanonicalSubjectId(s));
   });
   return daily;
 };
 
-const getDailyTasks = (tasks: TodoItem[]) => {
-  // We don't have task completion timestamp, so we just count total completed tasks
-  return tasks.filter(t => t.completed).length;
-};
+export const getCompletedTaskCount = (data: Pick<AppData, 'tasks' | 'completedTaskIds'>) =>
+  new Set([...(data.completedTaskIds || []), ...data.tasks.filter(task => task.completed).map(task => task.id)]).size;
+
+export const getMaxDailySubjectCount = (sessions: StudySession[]) =>
+  Math.max(0, ...Object.values(getDailySubjects(sessions)).map(subjects => subjects.size));
 
 export const ACHIEVEMENTS: Achievement[] = [
   // Time Category (15)
@@ -74,16 +169,16 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 't15', title: '一千小時的淬鍊', description: '累積讀書 1000 小時', icon: '👑', category: 'time', condition: d => getTotalStudyTime(d.studySessions) >= 60000 },
 
   // Streak Category (10)
-  { id: 's1', title: '三天打魚', description: '連續讀書 3 天', icon: '🔥', category: 'streak', condition: d => d.streak.max >= 3 },
-  { id: 's2', title: '一週全勤', description: '連續讀書 7 天', icon: '📅', category: 'streak', condition: d => d.streak.max >= 7 },
-  { id: 's3', title: '兩週不間斷', description: '連續讀書 14 天', icon: '🏃', category: 'streak', condition: d => d.streak.max >= 14 },
-  { id: 's4', title: '三週養成', description: '連續讀書 21 天', icon: '🔄', category: 'streak', condition: d => d.streak.max >= 21 },
-  { id: 's5', title: '滿月達成', description: '連續讀書 30 天', icon: '🌕', category: 'streak', condition: d => d.streak.max >= 30 },
-  { id: 's6', title: '五十天挑戰', description: '連續讀書 50 天', icon: '🎯', category: 'streak', condition: d => d.streak.max >= 50 },
-  { id: 's7', title: '兩個月堅持', description: '連續讀書 60 天', icon: '💪', category: 'streak', condition: d => d.streak.max >= 60 },
-  { id: 's8', title: '百日維新', description: '連續讀書 100 天', icon: '💯', category: 'streak', condition: d => d.streak.max >= 100 },
-  { id: 's9', title: '半年不輟', description: '連續讀書 180 天', icon: '⏳', category: 'streak', condition: d => d.streak.max >= 180 },
-  { id: 's10', title: '一年之計', description: '連續讀書 365 天', icon: '🌍', category: 'streak', condition: d => d.streak.max >= 365 },
+  { id: 's1', title: '三天打魚', description: '連續讀書 3 天', icon: '🔥', category: 'streak', condition: d => getStudyDayStreak(d.studySessions).max >= 3 },
+  { id: 's2', title: '一週全勤', description: '連續讀書 7 天', icon: '📅', category: 'streak', condition: d => getStudyDayStreak(d.studySessions).max >= 7 },
+  { id: 's3', title: '兩週不間斷', description: '連續讀書 14 天', icon: '🏃', category: 'streak', condition: d => getStudyDayStreak(d.studySessions).max >= 14 },
+  { id: 's4', title: '三週養成', description: '連續讀書 21 天', icon: '🔄', category: 'streak', condition: d => getStudyDayStreak(d.studySessions).max >= 21 },
+  { id: 's5', title: '滿月達成', description: '連續讀書 30 天', icon: '🌕', category: 'streak', condition: d => getStudyDayStreak(d.studySessions).max >= 30 },
+  { id: 's6', title: '五十天挑戰', description: '連續讀書 50 天', icon: '🎯', category: 'streak', condition: d => getStudyDayStreak(d.studySessions).max >= 50 },
+  { id: 's7', title: '兩個月堅持', description: '連續讀書 60 天', icon: '💪', category: 'streak', condition: d => getStudyDayStreak(d.studySessions).max >= 60 },
+  { id: 's8', title: '百日維新', description: '連續讀書 100 天', icon: '💯', category: 'streak', condition: d => getStudyDayStreak(d.studySessions).max >= 100 },
+  { id: 's9', title: '半年不輟', description: '連續讀書 180 天', icon: '⏳', category: 'streak', condition: d => getStudyDayStreak(d.studySessions).max >= 180 },
+  { id: 's10', title: '一年之計', description: '連續讀書 365 天', icon: '🌍', category: 'streak', condition: d => getStudyDayStreak(d.studySessions).max >= 365 },
 
   // Daily Study Time (10)
   { id: 'd1', title: '小試身手', description: '單日讀書 1 小時', icon: '⏱️', category: 'time', condition: d => Math.max(0, ...Object.values(getDailyStudyTimes(d.studySessions))) >= 60 },
@@ -113,16 +208,16 @@ export const ACHIEVEMENTS: Achievement[] = [
   }),
 
   // Task Category (10)
-  { id: 'ta1', title: '第一步', description: '完成 1 個待辦事項', icon: '✅', category: 'task', condition: d => getDailyTasks(d.tasks) >= 1 },
-  { id: 'ta2', title: '十全十美', description: '完成 10 個待辦事項', icon: '📝', category: 'task', condition: d => getDailyTasks(d.tasks) >= 10 },
-  { id: 'ta3', title: '任務達人', description: '完成 50 個待辦事項', icon: '📋', category: 'task', condition: d => getDailyTasks(d.tasks) >= 50 },
-  { id: 'ta4', title: '百戰百勝', description: '完成 100 個待辦事項', icon: '💯', category: 'task', condition: d => getDailyTasks(d.tasks) >= 100 },
-  { id: 'ta5', title: '兩百斬', description: '完成 200 個待辦事項', icon: '⚔️', category: 'task', condition: d => getDailyTasks(d.tasks) >= 200 },
-  { id: 'ta6', title: '三百壯士', description: '完成 300 個待辦事項', icon: '🛡️', category: 'task', condition: d => getDailyTasks(d.tasks) >= 300 },
-  { id: 'ta7', title: '四百連擊', description: '完成 400 個待辦事項', icon: '🔥', category: 'task', condition: d => getDailyTasks(d.tasks) >= 400 },
-  { id: 'ta8', title: '五百里程碑', description: '完成 500 個待辦事項', icon: '🏆', category: 'task', condition: d => getDailyTasks(d.tasks) >= 500 },
-  { id: 'ta9', title: '八百壯士', description: '完成 800 個待辦事項', icon: '🎖️', category: 'task', condition: d => getDailyTasks(d.tasks) >= 800 },
-  { id: 'ta10', title: '千錘百鍊', description: '完成 1000 個待辦事項', icon: '👑', category: 'task', condition: d => getDailyTasks(d.tasks) >= 1000 },
+  { id: 'ta1', title: '第一步', description: '完成 1 個待辦事項', icon: '✅', category: 'task', condition: d => getCompletedTaskCount(d) >= 1 },
+  { id: 'ta2', title: '十全十美', description: '完成 10 個待辦事項', icon: '📝', category: 'task', condition: d => getCompletedTaskCount(d) >= 10 },
+  { id: 'ta3', title: '任務達人', description: '完成 50 個待辦事項', icon: '📋', category: 'task', condition: d => getCompletedTaskCount(d) >= 50 },
+  { id: 'ta4', title: '百戰百勝', description: '完成 100 個待辦事項', icon: '💯', category: 'task', condition: d => getCompletedTaskCount(d) >= 100 },
+  { id: 'ta5', title: '兩百斬', description: '完成 200 個待辦事項', icon: '⚔️', category: 'task', condition: d => getCompletedTaskCount(d) >= 200 },
+  { id: 'ta6', title: '三百壯士', description: '完成 300 個待辦事項', icon: '🛡️', category: 'task', condition: d => getCompletedTaskCount(d) >= 300 },
+  { id: 'ta7', title: '四百連擊', description: '完成 400 個待辦事項', icon: '🔥', category: 'task', condition: d => getCompletedTaskCount(d) >= 400 },
+  { id: 'ta8', title: '五百里程碑', description: '完成 500 個待辦事項', icon: '🏆', category: 'task', condition: d => getCompletedTaskCount(d) >= 500 },
+  { id: 'ta9', title: '八百壯士', description: '完成 800 個待辦事項', icon: '🎖️', category: 'task', condition: d => getCompletedTaskCount(d) >= 800 },
+  { id: 'ta10', title: '千錘百鍊', description: '完成 1000 個待辦事項', icon: '👑', category: 'task', condition: d => getCompletedTaskCount(d) >= 1000 },
 
   // Special Category (30)
   { id: 'sp1', title: '夜貓子 I', description: '半夜 (00:00-04:00) 讀書 1 次', icon: '🦉', category: 'special', condition: d => getSessionsByHour(d.studySessions, 0, 4).length >= 1 },

@@ -67,10 +67,12 @@
     }
     </script>
 
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script>
-      tailwind.config = {
+      // Tailwind is compiled during the build; retain this only as legacy theme metadata.
+      window.__tailwindThemeConfig = {
         theme: {
           extend: {
             fontFamily: {
@@ -217,14 +219,5 @@
     <div id="root"></div>
     <script src="/vendor/supabase.js"></script>
     <script type="module" src="/index.tsx"></script>
-            <script async src="https://www.googletagmanager.com/gtag/js?id=G-H9X7EC127P"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-
-  gtag('config', 'G-H9X7EC127P');
-
-</script>
 </body>
 </html>

@@ -1,8 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import { X, Trophy, Lock, Star, Flame, BookOpen, CheckSquare, Zap, Target, LayoutGrid, CalendarDays, Clock, ChevronLeft, ArrowLeft, Award, TrendingUp } from 'lucide-react';
+import ModalLayer from './ModalLayer';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { X, Trophy, Lock, Star, Flame, BookOpen, CheckSquare, Zap, Target, LayoutGrid, CalendarDays, Clock, ChevronLeft, ChevronRight, ArrowLeft, Award, ArrowUpRight, CheckCircle2 } from 'lucide-react';
 import { AppData, StudySession } from '../types';
-import { ACHIEVEMENTS, Achievement } from '../utils/achievements';
+import { ACHIEVEMENTS, Achievement, getLocalDateKey, getStudyTimeBySubject, matchesAchievementSubject, getStudyDayStreak, getCompletedTaskCount, getMaxDailySubjectCount } from '../utils/achievements';
 import Heatmap from './Heatmap';
+import './AchievementsPage.css';
 
 interface AchievementsModalProps {
   isOpen: boolean;
@@ -25,31 +27,47 @@ const calculateProgress = (achievement: Achievement, data: AppData) => {
   }
 
   if (achievement.category === 'time') {
+    target *= 60;
+    unit = '分鐘';
     if (desc.includes('累積讀書')) {
-      current = Math.floor(data.studySessions.reduce((acc, s) => acc + s.durationMinutes, 0) / 60);
+      current = data.studySessions.reduce((acc, s) => acc + s.durationMinutes, 0);
     } else if (desc.includes('單日讀書')) {
       const daily = data.studySessions.reduce((acc, s) => {
-        const date = new Date(s.timestamp).toISOString().split('T')[0];
+        const date = getLocalDateKey(s.timestamp);
         acc[date] = (acc[date] || 0) + s.durationMinutes;
         return acc;
       }, {} as Record<string, number>);
-      current = Math.floor(Math.max(0, ...Object.values(daily)) / 60);
+      current = Math.max(0, ...Object.values(daily));
     }
   } else if (achievement.category === 'streak') {
-    current = data.streak.max;
+    current = getStudyDayStreak(data.studySessions).max;
   } else if (achievement.category === 'subject') {
+    target *= 60;
+    unit = '分鐘';
     const subjectMap: Record<string, string> = {
       '國文': 'chinese', '英文': 'english', '數學': 'math', '社會': 'social', '自然': 'natural'
     };
     const subjectName = Object.keys(subjectMap).find(k => desc.includes(k));
     if (subjectName) {
       const subjectId = subjectMap[subjectName];
-      current = Math.floor(data.studySessions.filter(s => s.subjectId === subjectId).reduce((acc, s) => acc + s.durationMinutes, 0) / 60);
+      current = getStudyTimeBySubject(data.studySessions, subjectId);
     }
   } else if (achievement.category === 'task') {
-    current = data.tasks.filter(t => t.completed).length;
+    current = getCompletedTaskCount(data);
   } else if (achievement.category === 'special') {
-    if (desc.includes('半夜')) {
+    if (['sp10', 'sp11', 'sp12', 'sp13'].includes(achievement.id)) {
+      target *= 60;
+      unit = '分鐘';
+      current = Math.max(0, ...data.studySessions.map(session => session.durationMinutes));
+    } else if (achievement.id === 'sp14' || achievement.id === 'sp15') {
+      target = Number(desc.match(/(\d+)\s*種/)?.[1] || 1);
+      unit = '科';
+      current = getMaxDailySubjectCount(data.studySessions);
+    } else if (achievement.id === 'sp30') {
+      target *= 60;
+      unit = '分鐘';
+      current = Math.min(...['chinese', 'english', 'math', 'social', 'natural'].map(subject => getStudyTimeBySubject(data.studySessions, subject)));
+    } else if (desc.includes('半夜')) {
       current = data.studySessions.filter(s => { const h = new Date(s.timestamp).getHours(); return h >= 0 && h < 4; }).length;
     } else if (desc.includes('清晨')) {
       current = data.studySessions.filter(s => { const h = new Date(s.timestamp).getHours(); return h >= 4 && h < 8; }).length;
@@ -90,7 +108,7 @@ const getRelatedSessions = (achievement: Achievement, data: AppData) => {
     };
     const subjectName = Object.keys(subjectMap).find(k => desc.includes(k));
     if (subjectName) {
-      sessions = sessions.filter(s => s.subjectId === subjectMap[subjectName]);
+      sessions = sessions.filter(s => matchesAchievementSubject(s, subjectMap[subjectName]));
     }
   } else if (achievement.category === 'special') {
     if (desc.includes('半夜')) {
@@ -123,9 +141,19 @@ const AchievementsModal: React.FC<AchievementsModalProps> = ({ isOpen, onClose, 
   const [viewMode, setViewMode] = useState<'achievements' | 'heatmap'>('achievements');
   const [selectedAchievement, setSelectedAchievement] = useState<Achievement | null>(null);
   const isPage = variant === 'page';
+  const [collectionStatus, setCollectionStatus] = useState<'all' | 'unlocked' | 'locked'>('all');
+  const medalRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const detailBackRef = useRef<HTMLButtonElement>(null);
+  const nextMilestoneRef = useRef<HTMLButtonElement>(null);
+  const closePageDetail = () => {
+    const previous = selectedAchievement?.id;
+    setSelectedAchievement(null);
+    requestAnimationFrame(() => { (previous && medalRefs.current[previous] || nextMilestoneRef.current)?.focus(); });
+  };
 
   const unlockedIds = useMemo(() => {
-    return new Set(ACHIEVEMENTS.filter(a => a.condition(data)).map(a => a.id));
+    // 永遠以原始學習資料重新驗證，不信任可被本機修改的已解鎖 ID 清單。
+    return new Set(ACHIEVEMENTS.filter(achievement => achievement.condition(data)).map(achievement => achievement.id));
   }, [data]);
 
   const filteredAchievements = useMemo(() => {
@@ -138,7 +166,20 @@ const AchievementsModal: React.FC<AchievementsModalProps> = ({ isOpen, onClose, 
   const progressPercentage = Math.round((unlockedCount / totalCount) * 100);
   const totalMinutes = data.studySessions.reduce((sum, session) => sum + session.durationMinutes, 0);
   const activeDays = new Set(data.studySessions.map(session => new Date(session.timestamp).toLocaleDateString('zh-TW'))).size;
-  const recentUnlocked = ACHIEVEMENTS.filter(a => unlockedIds.has(a.id)).slice(-3).reverse();
+  const pageAchievements = filteredAchievements.filter(a => collectionStatus === 'all' || (collectionStatus === 'unlocked' ? unlockedIds.has(a.id) : !unlockedIds.has(a.id)));
+  const nextAchievement = useMemo(() => {
+    return ACHIEVEMENTS
+      .filter(achievement => !unlockedIds.has(achievement.id))
+      .map(achievement => ({ achievement, progress: calculateProgress(achievement, data) }))
+      .sort((a, b) => (b.progress.current / b.progress.target) - (a.progress.current / a.progress.target))[0];
+  }, [data, unlockedIds]);
+
+  useEffect(() => {
+    if (isPage && selectedAchievement) {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      detailBackRef.current?.focus({ preventScroll: true });
+    }
+  }, [isPage, selectedAchievement]);
 
   if (!isOpen) return null;
 
@@ -149,56 +190,18 @@ const AchievementsModal: React.FC<AchievementsModalProps> = ({ isOpen, onClose, 
 
     if (isPage) {
       return (
-        <div className="animate-fade-in">
-          <div className="relative min-h-[calc(100vh-11rem)] rounded-[1.75rem] border border-white/70 bg-white/85 p-4 shadow-xl shadow-slate-200/60 backdrop-blur-xl sm:p-6 lg:p-8">
-            <button onClick={() => setSelectedAchievement(null)} className="mb-6 inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-600 shadow-sm transition-all hover:border-indigo-200 hover:text-indigo-700">
-              <ChevronLeft className="h-4 w-4" /> 返回成就牆
-            </button>
-            <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
-              <aside className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5 text-center">
-                <div className={`mx-auto mb-5 flex h-28 w-28 items-center justify-center rounded-[2rem] text-6xl shadow-inner ${isUnlocked ? 'bg-indigo-50 shadow-indigo-200' : 'bg-slate-100 grayscale opacity-60'}`}>
-                  {isUnlocked ? selectedAchievement.icon : <Lock className="h-12 w-12 text-slate-400" />}
-                </div>
-                <h2 className="text-2xl font-black text-slate-950">{selectedAchievement.title}</h2>
-                <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-500">{selectedAchievement.description}</p>
-                <div className={`mt-5 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black ${isUnlocked ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
-                  {isUnlocked ? <CheckSquare className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-                  {isUnlocked ? '已解鎖' : '尚未解鎖'}
-                </div>
-              </aside>
-
-              <section className="space-y-5">
-                <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="mb-3 flex items-center justify-between gap-3 text-sm font-black">
-                    <span className="text-slate-700">當前進度</span>
-                    <span className="text-indigo-700">{progress.current} / {progress.target} {progress.unit}</span>
-                  </div>
-                  <div className="h-4 overflow-hidden rounded-full bg-slate-100">
-                    <div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-sky-500 transition-all duration-1000" style={{ width: `${Math.min(100, (progress.current / progress.target) * 100)}%` }} />
-                  </div>
-                </div>
-
-                <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-                  <h3 className="mb-4 flex items-center gap-2 font-black text-slate-900">
-                    <Clock className="h-5 w-5 text-indigo-600" /> 最近相關紀錄
-                  </h3>
-                  {relatedSessions.length > 0 ? (
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {relatedSessions.map(session => (
-                        <div key={session.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                          <div className="font-black text-slate-800">{session.subjectName}</div>
-                          <div className="mt-1 text-xs font-semibold text-slate-500">{new Date(session.timestamp).toLocaleString()}</div>
-                          <div className="mt-3 inline-flex rounded-xl bg-indigo-50 px-3 py-1 text-sm font-black text-indigo-700">{session.durationMinutes} 分鐘</div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm font-semibold text-slate-500">
-                      尚無可對應到這個成就的讀書紀錄。
-                    </div>
-                  )}
-                </div>
-              </section>
+        <div className="medal-hall medal-detail">
+          <button ref={detailBackRef} type="button" onClick={closePageDetail} className="medal-back"><ArrowLeft size={16} /> 返回勳章殿堂</button>
+          <div className="medal-detail-layout">
+            <section className={`medal-detail-showcase${isUnlocked ? ' medal-detail-showcase--unlocked' : ''}`}>
+              <span className="medal-eyebrow">{MEDAL_STYLES[selectedAchievement.category].label}</span>
+              <div className="medal-detail-badge"><AchievementMedal achievement={selectedAchievement} unlocked={isUnlocked} size="lg" /></div>
+              <h1>{selectedAchievement.title}</h1><p>{selectedAchievement.description}</p>
+              <span className={`medal-status${isUnlocked ? ' medal-status--unlocked' : ''}`}>{isUnlocked ? <CheckCircle2 size={13} /> : <Lock size={13} />}{isUnlocked ? '已解鎖' : '尚未解鎖'}</span>
+            </section>
+            <div className="medal-detail-info">
+              <section className="medal-detail-panel"><span className="medal-eyebrow">每一步，都是累積</span><h2>解鎖進度</h2><div className="medal-detail-progress"><strong>{isUnlocked ? progress.target : progress.current}<span> / {progress.target} {progress.unit}</span></strong><span>{isUnlocked ? '已達成' : '持續累積中'}</span></div><progress className="medal-progress" value={isUnlocked ? progress.target : progress.current} max={progress.target} aria-label={`${selectedAchievement.title}解鎖進度`} /><p>{isUnlocked ? '目前的學習紀錄已達成這項里程碑，謝謝你持續投入的每一次專注。' : `再累積 ${Math.max(0, progress.target - progress.current)} ${progress.unit}，朝這枚勳章前進。`}</p></section>
+              <section className="medal-detail-panel"><div className="medal-record-heading"><h2><Clock size={18} /> 對應專注紀錄</h2><span>最近 {relatedSessions.length} 筆</span></div>{relatedSessions.length ? <ul className="medal-records">{relatedSessions.map(session => <li key={session.id}><div><strong>{session.subjectName}</strong><p>{new Date(session.timestamp).toLocaleString('zh-TW')}</p></div><span>{session.durationMinutes} 分鐘</span></li>)}</ul> : <div className="medal-record-empty"><BookOpen size={25} /><p>尚無可對應到這個成就的讀書紀錄。</p></div>}</section>
             </div>
           </div>
         </div>
@@ -206,7 +209,7 @@ const AchievementsModal: React.FC<AchievementsModalProps> = ({ isOpen, onClose, 
     }
 
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+      <ModalLayer className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
         <div className="bg-white rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative border border-white/50 animate-scale-in max-h-[90vh] flex flex-col">
           <button onClick={() => setSelectedAchievement(null)} className="absolute top-6 left-6 text-slate-400 hover:text-slate-700 transition-colors z-10 bg-slate-100 p-2 rounded-full">
             <ChevronLeft className="w-5 h-5" />
@@ -277,7 +280,7 @@ const AchievementsModal: React.FC<AchievementsModalProps> = ({ isOpen, onClose, 
             </div>
           </div>
         </div>
-      </div>
+      </ModalLayer>
     );
   }
 
@@ -292,152 +295,37 @@ const AchievementsModal: React.FC<AchievementsModalProps> = ({ isOpen, onClose, 
 
   if (isPage) {
     return (
-      <div className="animate-fade-in">
-        <div className="relative flex min-h-[calc(100vh-11rem)] flex-col gap-6">
-          <section className="relative overflow-hidden rounded-[1.75rem] border border-white/70 bg-white/85 p-5 shadow-xl shadow-slate-200/60 backdrop-blur-xl sm:p-8">
-            <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-indigo-500 via-sky-400 to-emerald-400"></div>
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-              <div className="flex items-start gap-4">
-                <button onClick={onClose} className="mt-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:border-slate-300 hover:text-slate-900" title="返回主頁">
-                  <ArrowLeft className="h-5 w-5" />
-                </button>
-                <div>
-                  <p className="mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.22em] text-indigo-700">
-                    <Trophy className="h-4 w-4" /> Honor Archive
-                  </p>
-                  <h2 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">成就與紀錄</h2>
-                  <p className="mt-3 max-w-2xl text-sm font-semibold leading-relaxed text-slate-500">
-                    把解鎖勳章、讀書熱力圖與最近學習紀錄整理成一個個人榮譽頁，讓努力不只被保存，也能被回顧。
-                  </p>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 lg:min-w-[380px]">
-                <div className="rounded-2xl border border-indigo-100 bg-indigo-50/80 px-3 py-3 text-center">
-                  <div className="text-xl font-black text-indigo-700">{unlockedCount}</div>
-                  <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-indigo-600/70">Unlocked</div>
-                </div>
-                <div className="rounded-2xl border border-emerald-100 bg-emerald-50/80 px-3 py-3 text-center">
-                  <div className="text-xl font-black text-emerald-700">{Math.round(totalMinutes / 60)}</div>
-                  <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-emerald-600/70">Hours</div>
-                </div>
-                <div className="rounded-2xl border border-amber-100 bg-amber-50/80 px-3 py-3 text-center">
-                  <div className="text-xl font-black text-amber-700">{activeDays}</div>
-                  <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-amber-600/70">Days</div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <div className="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
-            <aside className="space-y-4">
-              <div className="rounded-[1.5rem] border border-white/70 bg-white/85 p-4 shadow-xl shadow-slate-200/60 backdrop-blur-xl">
-                <div className="mb-3 flex items-center justify-between">
-                  <div>
-                    <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Progress</div>
-                    <div className="mt-1 text-2xl font-black text-slate-950">{progressPercentage}%</div>
-                  </div>
-                  <Award className="h-8 w-8 text-indigo-500" />
-                </div>
-                <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-                  <div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-sky-500" style={{ width: `${progressPercentage}%` }} />
-                </div>
-                <p className="mt-3 text-xs font-semibold leading-relaxed text-slate-500">已解鎖 {unlockedCount} / {totalCount} 個勳章。</p>
-              </div>
-
-              <div className="rounded-[1.5rem] border border-white/70 bg-white/85 p-3 shadow-xl shadow-slate-200/60 backdrop-blur-xl">
-                <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
-                  <button onClick={() => setViewMode('achievements')} className={`flex items-center justify-center gap-2 rounded-2xl px-3 py-3 text-sm font-black transition-all ${viewMode === 'achievements' ? 'bg-slate-950 text-white shadow-lg shadow-slate-300/50' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}>
-                    <LayoutGrid className="h-4 w-4" /> 勳章牆
-                  </button>
-                  <button onClick={() => setViewMode('heatmap')} className={`flex items-center justify-center gap-2 rounded-2xl px-3 py-3 text-sm font-black transition-all ${viewMode === 'heatmap' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200/70' : 'text-slate-500 hover:bg-indigo-50 hover:text-indigo-700'}`}>
-                    <CalendarDays className="h-4 w-4" /> 讀書熱力圖
-                  </button>
-                </div>
-              </div>
-
-              <div className="hidden rounded-[1.5rem] border border-white/70 bg-white/85 p-4 shadow-xl shadow-slate-200/60 backdrop-blur-xl lg:block">
-                <h3 className="mb-3 flex items-center gap-2 text-sm font-black text-slate-900">
-                  <TrendingUp className="h-4 w-4 text-emerald-600" /> 最近解鎖
-                </h3>
-                <div className="space-y-2">
-                  {recentUnlocked.length > 0 ? recentUnlocked.map(item => (
-                    <button key={item.id} onClick={() => setSelectedAchievement(item)} className="flex w-full items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 text-left transition-all hover:border-indigo-200 hover:bg-indigo-50">
-                      <span className="text-2xl">{item.icon}</span>
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-black text-slate-800">{item.title}</span>
-                        <span className="block truncate text-xs font-semibold text-slate-500">{item.description}</span>
-                      </span>
-                    </button>
-                  )) : (
-                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-xs font-semibold text-slate-500">尚未解鎖成就</div>
-                  )}
-                </div>
-              </div>
-            </aside>
-
-            <section className="min-w-0 rounded-[1.5rem] border border-white/70 bg-white/85 p-4 shadow-xl shadow-slate-200/60 backdrop-blur-xl sm:p-6">
-              {viewMode === 'heatmap' ? (
-                <div className="space-y-5">
-                  <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-indigo-600">Study Heatmap</p>
-                    <h3 className="mt-1 text-2xl font-black text-slate-950">過去 365 天讀書熱力圖</h3>
-                    <p className="mt-2 text-sm font-semibold text-slate-500">用每日顏色濃淡看出你的讀書節奏與穩定度。</p>
-                  </div>
-                  <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                    <Heatmap sessions={data.studySessions} />
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-5">
-                  <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-                    <div>
-                      <p className="text-[11px] font-black uppercase tracking-[0.2em] text-indigo-600">Achievement Wall</p>
-                      <h3 className="mt-1 text-2xl font-black text-slate-950">勳章牆</h3>
-                      <p className="mt-2 text-sm font-semibold text-slate-500">依類型篩選成就，點擊可查看進度與相關紀錄。</p>
-                    </div>
-                    <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
-                      {tabs.map(tab => {
-                        const Icon = tab.icon;
-                        const isActive = activeTab === tab.id;
-                        return (
-                          <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex flex-shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-black transition-all ${isActive ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                            <Icon className="h-4 w-4" /> {tab.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                    {filteredAchievements.map(achievement => {
-                      const isUnlocked = unlockedIds.has(achievement.id);
-                      const progress = calculateProgress(achievement, data);
-                      return (
-                        <button key={achievement.id} onClick={() => setSelectedAchievement(achievement)} className={`relative min-h-[176px] rounded-2xl border p-4 text-left transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${isUnlocked ? 'bg-white border-indigo-100 shadow-sm hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md' : 'bg-slate-50 border-slate-100 opacity-75 grayscale hover:opacity-100 hover:grayscale-0'}`}>
-                          {isUnlocked && <div className="absolute right-3 top-3 h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]" />}
-                          <div className={`mb-4 flex h-14 w-14 items-center justify-center rounded-2xl text-3xl shadow-inner ${isUnlocked ? 'bg-indigo-50' : 'bg-slate-200'}`}>
-                            {isUnlocked ? achievement.icon : <Lock className="h-6 w-6 text-slate-400" />}
-                          </div>
-                          <h4 className={`font-black ${isUnlocked ? 'text-slate-900' : 'text-slate-500'}`}>{achievement.title}</h4>
-                          <p className="mt-1 line-clamp-2 text-xs font-semibold leading-relaxed text-slate-500">{achievement.description}</p>
-                          <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
-                            <div className={`h-full rounded-full ${isUnlocked ? 'bg-emerald-500' : 'bg-indigo-400'}`} style={{ width: `${Math.min(100, (progress.current / progress.target) * 100)}%` }} />
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </section>
-          </div>
+      <div className="medal-hall">
+        <button type="button" onClick={onClose} className="medal-back"><ArrowLeft size={16} /> 回到首頁</button>
+        <header className="medal-header">
+          <div><span className="medal-eyebrow"><Trophy size={14} /> 每一份專注，都值得收藏</span><h1>勳章殿堂<span>。</span></h1><p>累積日常的小小進步，點亮屬於你的學習里程碑。</p></div>
+          <div className="medal-collection"><div className="medal-ring" style={{ background: `conic-gradient(#c3a16a ${progressPercentage}%, #ede7dc 0)` }}><div><Award size={23} /><strong>{progressPercentage}%</strong></div></div><div><span>收藏進度</span><strong>{unlockedCount}<span> / {totalCount}</span></strong><p>枚勳章已解鎖</p></div></div>
+        </header>
+        <div className="medal-overview">
+          <div className="medal-metrics"><div><span className="medal-metric-icon"><Trophy size={19} /></span><div><span>已解鎖勳章</span><strong>{unlockedCount}<small> 枚</small></strong></div></div><div><span className="medal-metric-icon"><Clock size={19} /></span><div><span>累積專注</span><strong>{Math.round(totalMinutes / 60)}<small> 小時</small></strong></div></div><div><span className="medal-metric-icon"><CalendarDays size={19} /></span><div><span>學習足跡</span><strong>{activeDays}<small> 天</small></strong></div></div></div>
+          {nextAchievement ? <button ref={nextMilestoneRef} type="button" className="medal-next" onClick={() => setSelectedAchievement(nextAchievement.achievement)}><span className="medal-next-icon" aria-hidden="true">{nextAchievement.achievement.icon}</span><div><span>下一個里程碑</span><strong>{nextAchievement.achievement.title}</strong><p>{nextAchievement.progress.current} / {nextAchievement.progress.target} {nextAchievement.progress.unit}</p></div><ArrowUpRight size={20} /></button> : <div className="medal-complete"><Trophy size={26} /><div><strong>收藏已完整點亮</strong><p>每一次專注，都是值得記住的成就。</p></div></div>}
         </div>
+        <div className="medal-view-switch" aria-label="紀錄檢視"><button type="button" aria-pressed={viewMode === 'achievements'} onClick={() => setViewMode('achievements')}><LayoutGrid size={15} /> 勳章牆</button><button type="button" aria-pressed={viewMode === 'heatmap'} onClick={() => setViewMode('heatmap')}><CalendarDays size={15} /> 讀書熱力圖</button></div>
+        {viewMode === 'heatmap' ? <section className="medal-heatmap"><span className="medal-eyebrow">讓努力留下軌跡</span><h2>過去 365 天讀書熱力圖</h2><p>從每日顏色濃淡，看看你的學習節奏。</p><div className="medal-heatmap-scroll"><Heatmap sessions={data.studySessions} /></div></section> : <section className="medal-wall" aria-label="勳章牆">
+          <div className="medal-wall-heading"><div><h2>我的勳章收藏</h2><p>點選勳章，查看解鎖條件與相關紀錄。</p></div><label className="medal-status-filter"><span>收藏狀態</span><select value={collectionStatus} onChange={e => setCollectionStatus(e.target.value as typeof collectionStatus)}><option value="all">全部狀態</option><option value="unlocked">已解鎖</option><option value="locked">未解鎖</option></select></label></div>
+          <div className="medal-filter-row"><div className="medal-filters" aria-label="勳章分類">{tabs.map(tab => { const Icon = tab.icon; return <button key={tab.id} type="button" aria-pressed={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}><Icon size={14} />{tab.label}</button>; })}</div><span className="medal-result-count" aria-live="polite">共 {pageAchievements.length} 枚</span></div>
+          <div className="medal-grid">{pageAchievements.map(achievement => {
+            const isUnlocked = unlockedIds.has(achievement.id);
+            const progress = calculateProgress(achievement, data);
+            return <button key={achievement.id} ref={node => { medalRefs.current[achievement.id] = node; }} type="button" onClick={() => setSelectedAchievement(achievement)} className={`medal-card${isUnlocked ? ' medal-card--unlocked' : ''}`}>
+              <div className="medal-card-meta"><span>{MEDAL_STYLES[achievement.category].label}</span><span className={`medal-status${isUnlocked ? ' medal-status--unlocked' : ''}`}>{isUnlocked ? <CheckCircle2 size={11} /> : <Lock size={11} />}{isUnlocked ? '已解鎖' : '未解鎖'}</span></div>
+              <div className="medal-card-badge"><AchievementMedal achievement={achievement} unlocked={isUnlocked} /></div><h3>{achievement.title}</h3><p>{achievement.description}</p>
+              <div className="medal-card-progress"><span>{isUnlocked ? '已達成' : '解鎖進度'}</span><span>{isUnlocked ? progress.target : progress.current} / {progress.target} {progress.unit}</span></div><progress className="medal-progress" value={isUnlocked ? progress.target : progress.current} max={progress.target} aria-label={`${achievement.title}解鎖進度`} />
+            </button>;
+          })}</div>
+          {pageAchievements.length === 0 && <div className="medal-empty"><Award size={30} /><h3>目前沒有符合的勳章</h3><p>試試其他分類，或繼續累積你的第一枚勳章。</p><button type="button" onClick={() => { setActiveTab('all'); setCollectionStatus('all'); }}>查看全部勳章</button></div>}
+        </section>}
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+    <ModalLayer className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
       <div className="bg-white rounded-3xl w-full max-w-4xl p-6 md:p-8 shadow-2xl relative border border-white/50 max-h-[90vh] flex flex-col animate-scale-in">
         <button onClick={onClose} className="absolute top-6 right-6 text-slate-400 hover:text-slate-700 transition-colors z-10 bg-slate-100 p-2 rounded-full">
           <X className="w-5 h-5" />
@@ -563,6 +451,31 @@ const AchievementsModal: React.FC<AchievementsModalProps> = ({ isOpen, onClose, 
           </>
         )}
       </div>
+    </ModalLayer>
+  );
+};
+
+const MEDAL_STYLES: Record<Achievement['category'], { ribbon: string; ring: string; core: string; label: string }> = {
+  time: { ribbon: 'from-sky-400 to-indigo-600', ring: 'from-sky-200 via-white to-indigo-200', core: 'from-sky-50 to-indigo-100', label: '時光徽章' },
+  streak: { ribbon: 'from-orange-400 to-rose-600', ring: 'from-orange-200 via-white to-rose-200', core: 'from-orange-50 to-rose-100', label: '連續徽章' },
+  subject: { ribbon: 'from-violet-400 to-fuchsia-600', ring: 'from-violet-200 via-white to-fuchsia-200', core: 'from-violet-50 to-fuchsia-100', label: '科目徽章' },
+  task: { ribbon: 'from-emerald-400 to-teal-600', ring: 'from-emerald-200 via-white to-teal-200', core: 'from-emerald-50 to-teal-100', label: '任務徽章' },
+  special: { ribbon: 'from-amber-400 to-pink-600', ring: 'from-amber-200 via-white to-pink-200', core: 'from-amber-50 to-pink-100', label: '限定徽章' },
+};
+
+const AchievementMedal: React.FC<{ achievement: Achievement; unlocked: boolean; size?: 'sm' | 'md' | 'lg' }> = ({ achievement, unlocked, size = 'md' }) => {
+  const style = MEDAL_STYLES[achievement.category];
+  const dimensions = size === 'sm' ? 'h-14 w-14 text-2xl' : size === 'lg' ? 'h-28 w-28 text-5xl' : 'h-20 w-20 text-3xl';
+  return (
+    <div className={`relative mb-4 flex-shrink-0 ${dimensions}`} title={style.label}>
+      <div className={`absolute left-[18%] top-0 h-9 w-[29%] rounded-b-md bg-gradient-to-b ${unlocked ? style.ribbon : 'from-slate-300 to-slate-400'} [clip-path:polygon(0_0,100%_0,84%_100%,0_72%)]`} />
+      <div className={`absolute right-[18%] top-0 h-9 w-[29%] rounded-b-md bg-gradient-to-b ${unlocked ? style.ribbon : 'from-slate-300 to-slate-400'} [clip-path:polygon(0_0,100%_0,100%_72%,16%_100%)]`} />
+      <div className={`absolute bottom-0 left-1/2 grid h-[76%] w-[76%] -translate-x-1/2 place-items-center rounded-full bg-gradient-to-br p-1 shadow-md transition-transform duration-300 group-hover:scale-110 ${unlocked ? style.ring : 'from-slate-200 via-white to-slate-300 grayscale'}`}>
+        <div className={`grid h-full w-full place-items-center rounded-full bg-gradient-to-br shadow-inner ${unlocked ? style.core : 'from-slate-100 to-slate-200'}`}>
+          <span aria-hidden="true" className={unlocked ? "drop-shadow-sm" : "grayscale opacity-60"}>{achievement.icon}</span>
+        </div>
+      </div>
+      {unlocked && <span className="absolute bottom-0 right-0 grid h-5 w-5 place-items-center rounded-full border-2 border-white bg-emerald-500 text-[9px] font-black text-white shadow-sm">✓</span>}
     </div>
   );
 };

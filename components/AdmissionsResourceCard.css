@@ -1,0 +1,82 @@
+.home-promo > .admissions-card {
+  position:relative;
+  isolation:isolate;
+  display:grid;
+  grid-template-columns:140px minmax(0,1fr) auto;
+  gap:30px;
+  align-items:center;
+  padding:30px;
+  border:1px solid #e4deec;
+  border-radius:24px;
+  background:radial-gradient(ellipse at 0 100%,#f0eafa66,transparent 50%),linear-gradient(115deg,#fcfaf7,#faf8ff);
+  color:#423b50;
+  text-decoration:none;
+  box-shadow:0 6px 24px #65568105;
+  transition:border-color .25s,box-shadow .25s;
+}
+.admissions-card:hover { border-color:#c5b5da; box-shadow:0 10px 30px #6556810d; }
+.admissions-card:focus-visible { outline:3px solid #ad99ce; outline-offset:4px; }
+.admissions-illustration { position:relative; display:grid; place-items:center; min-width:0; height:150px; }
+.admissions-orbit { position:absolute; width:134px; height:134px; border:1px solid #e6dcec; border-radius:50%; background:#f1eaf580; }
+.admissions-orbit::after { content:''; position:absolute; top:9px; right:17px; width:6px; height:6px; border-radius:50%; background:#c5b2d7; box-shadow:-103px 81px 0 -1px #d9c8b1; }
+.admissions-calendar { position:relative; display:flex; align-items:center; flex-direction:column; width:96px; padding:14px 12px 12px; border:1px solid #d9ccdf; border-radius:10px; background:linear-gradient(150deg,#fffefb,#fbf7fd); box-shadow:3px 5px 0 #e9e1ed,0 12px 18px #806f9110; transform:rotate(-7deg); transition:transform .35s; }
+.admissions-card:hover .admissions-calendar { transform:rotate(-3deg) translateY(-2px); }
+.admissions-binding { position:absolute; top:-5px; inset-inline:20px; display:flex; justify-content:space-between; }
+.admissions-binding i { width:4px; height:11px; border:1px solid #bca8c8; border-radius:5px; background:#d7c9e1; }
+.admissions-calendar-label { color:#a48bae; font-size:8px; letter-spacing:2px; }
+.admissions-calendar strong { margin-top:4px; color:#877098; font-size:35px; font-weight:500; line-height:1.25; letter-spacing:-2px; font-variant-numeric:tabular-nums; }
+.admissions-calendar-year { font-size:8px; letter-spacing:3px; color:#ab9ab5; }
+.admissions-calendar-rule { align-self:stretch; height:1px; margin:9px 0; background:#e9e0ed; }
+.admissions-calendar-dots { display:flex; gap:5px; }
+.admissions-calendar-dots i { width:4px; height:4px; border-radius:1px; background:#e6dbed; }
+.admissions-calendar-dots i:nth-child(3n) { background:#bea4cf; }
+.admissions-cap { position:absolute; right:0; bottom:5px; display:grid; place-items:center; width:44px; height:44px; border:3px solid #fcfaf9; border-radius:14px; background:#eae1f1; color:#9779ad; transform:rotate(6deg); }
+.admissions-copy { min-width:0; }
+.admissions-eyebrow { display:flex; align-items:center; flex-wrap:wrap; gap:12px; }
+.admissions-eyebrow > span { padding:5px 9px; border:1px solid #e3d8ee; border-radius:6px; background:#f1eaf8; font-size:10px; line-height:1.5; font-weight:600; letter-spacing:.5px; color:#8d719e; }
+.admissions-eyebrow small { color:#a89bad; font-size:10px; letter-spacing:1.5px; }
+.admissions-copy h3 { margin:12px 0 8px; font-size:23px; line-height:1.5; font-weight:750; letter-spacing:.5px; overflow-wrap:anywhere; }
+.admissions-copy > p { max-width:490px; margin:0; color:#89818f; font-size:12px; line-height:1.9; overflow-wrap:anywhere; }
+.admissions-topics { display:flex; flex-wrap:wrap; gap:8px 16px; list-style:none; margin:14px 0 0; padding:0; }
+.admissions-topics li { display:flex; align-items:center; gap:5px; color:#9c8ca6; font-size:10px; }
+.admissions-action { display:flex; flex-direction:column; align-items:center; gap:10px; min-width:0; }
+.admissions-action-button { display:flex; align-items:center; justify-content:center; gap:16px; padding:13px 17px; border:1px solid #ded2ea; border-radius:12px; background:#eee6f5; color:#86679d; font-size:12px; font-weight:650; line-height:1.5; transition:background .2s; }
+.admissions-action-button svg { flex-shrink:0; transition:transform .2s; }
+.admissions-card:hover .admissions-action-button { background:#e7daef; }
+.admissions-card:hover .admissions-action-button svg { transform:translate(2px,-2px); }
+.admissions-action > small { color:#a79baa; font-size:9px; line-height:1.6; }
+@media(max-width:1000px) {
+  .home-promo > .admissions-card { grid-template-columns:112px minmax(0,1fr); gap:18px 24px; padding:25px; }
+  .admissions-illustration { grid-row:span 2; }
+  .admissions-orbit { width:112px; height:112px; }
+  .admissions-action { grid-column:2; flex-direction:row; justify-content:space-between; gap:12px; }
+  .admissions-copy h3 { font-size:21px; }
+}
+@media(max-width:600px) {
+  .home-promo > .admissions-card { grid-template-columns:65px minmax(0,1fr); gap:18px 14px; padding:22px 19px; border-radius:20px; }
+  .admissions-illustration { grid-row:1; align-self:start; height:89px; margin-top:10px; }
+  .admissions-orbit { width:65px; height:65px; }
+  .admissions-orbit::after { display:none; }
+  .admissions-calendar { width:57px; border-radius:6px; padding:10px 5px 8px; box-shadow:2px 3px 0 #e9e1ed; }
+  .admissions-binding { inset-inline:10px; }
+  .admissions-calendar-label { font-size:6px; letter-spacing:1px; }
+  .admissions-calendar strong { font-size:25px; letter-spacing:-1px; }
+  .admissions-calendar-year { font-size:6px; letter-spacing:2px; }
+  .admissions-calendar-rule { margin:6px 0; }
+  .admissions-calendar-dots { gap:3px; }
+  .admissions-calendar-dots i { width:3px; height:3px; }
+  .admissions-cap { width:27px; height:27px; border-width:2px; border-radius:9px; right:-7px; bottom:-4px; }
+  .admissions-cap svg { width:17px; }
+  .admissions-eyebrow { gap:6px; }
+  .admissions-eyebrow > span { font-size:9px; padding:4px 7px; }
+  .admissions-eyebrow small { display:none; }
+  .admissions-copy h3 { margin-top:9px; font-size:18px; letter-spacing:0; }
+  .admissions-copy > p { font-size:11px; line-height:1.85; }
+  .admissions-topics { gap:8px 11px; margin-top:11px; }
+  .admissions-topics li { font-size:9px; gap:4px; }
+  .admissions-topics svg { width:11px; }
+  .admissions-action { grid-column:1 / -1; padding-top:16px; border-top:1px solid #e9e1ef; flex-wrap:wrap; }
+  .admissions-action-button { padding:11px 13px; gap:10px; font-size:11px; }
+  .admissions-action > small { font-size:8px; }
+}
+@media(prefers-reduced-motion:reduce) { .admissions-card,.admissions-calendar,.admissions-action-button,.admissions-action-button svg { transition:none; } }

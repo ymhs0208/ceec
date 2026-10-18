@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import './SettingsPage.css';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -9,7 +10,6 @@ import {
   Clock,
   Flame,
   GraduationCap,
-  LayoutGrid,
   Search,
   Settings,
   Shield,
@@ -34,6 +34,7 @@ interface SettingsPageProps {
   selectedCategory: string;
   setSelectedCategory: React.Dispatch<React.SetStateAction<string>>;
   setPendingExamSwitch: React.Dispatch<React.SetStateAction<ExamPreset | null>>;
+  isAuthenticated: boolean;
   confirmResetType: 'tasks' | 'sessions' | 'dates' | null;
   setConfirmResetType: React.Dispatch<React.SetStateAction<'tasks' | 'sessions' | 'dates' | null>>;
   executeReset: () => void;
@@ -55,7 +56,7 @@ const toneClasses: Record<string, { active: string; badge: string; text: string 
 
 const resetCopy = {
   tasks: { title: '清空任務清單', body: '所有待辦事項會被移除，但讀書紀錄會保留。' },
-  sessions: { title: '清空讀書紀錄', body: '學習歷程、今日專注、排行榜相關統計會重新開始。' },
+  sessions: { title: '清空讀書紀錄', body: '個人學習歷程與今日專注會重新開始。已同步的排行榜與社群統計仍保留；其他裝置連線同步後會套用此重置。' },
   dates: { title: '清空重要日程', body: '你自訂的活動與提醒日期會被移除。' },
 };
 
@@ -76,11 +77,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   selectedCategory,
   setSelectedCategory,
   setPendingExamSwitch,
+  isAuthenticated,
   confirmResetType,
   setConfirmResetType,
   executeReset,
 }) => {
   const [section, setSection] = useState<'exam' | 'goal' | 'data'>('exam');
+  const [draftTargetSchool, setDraftTargetSchool] = useState(targetSchool);
+  const [draftTargetMajor, setDraftTargetMajor] = useState(targetMajor);
   const currentExam = useMemo(() => EXAM_PRESETS.find((exam) => exam.id === targetExam), [targetExam]);
   const visibleExams = useMemo(
     () => EXAM_PRESETS.filter((exam) => exam.category === selectedCategory).sort((a, b) => b.year - a.year),
@@ -89,10 +93,21 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   const dailyGoalHours = Math.floor(dailyGoal / 60);
   const dailyGoalMinutes = dailyGoal % 60;
   const selectedTvet = TVET_CATEGORIES.find((category) => category.id === tvetCategory);
+  const hasTargetChanges = draftTargetSchool !== targetSchool || draftTargetMajor !== targetMajor;
+
+  useEffect(() => {
+    setDraftTargetSchool(targetSchool);
+    setDraftTargetMajor(targetMajor);
+  }, [targetMajor, targetSchool]);
+
+  const saveTarget = () => {
+    setTargetSchool(draftTargetSchool.trim());
+    setTargetMajor(draftTargetMajor.trim());
+  };
 
   const chooseExam = (exam: ExamPreset) => {
     if (exam.id === targetExam) return;
-    if (currentExam && currentExam.category !== exam.category) {
+    if (isAuthenticated && currentExam && currentExam.category !== exam.category) {
       setPendingExamSwitch(exam);
       return;
     }
@@ -101,59 +116,23 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   };
 
   return (
-    <div className="animate-fade-in">
-      <div className="relative flex min-h-[calc(100vh-11rem)] w-full flex-col gap-6">
-        <header className="relative overflow-hidden rounded-[1.75rem] border border-white/70 bg-white/85 p-5 shadow-xl shadow-slate-200/60 backdrop-blur-xl sm:p-8">
-          <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-slate-900 via-indigo-500 to-emerald-400" />
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="flex items-start gap-4">
-              <button
-                onClick={onClose}
-                className="mt-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:border-slate-300 hover:text-slate-900"
-                title="返回首頁"
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </button>
-              <div>
-                <p className="mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.22em] text-indigo-700">
-                  <Settings className="h-4 w-4" />
-                  Personal Settings
-                </p>
-                <h2 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">個人設定</h2>
-                <p className="mt-3 max-w-2xl text-sm font-semibold leading-relaxed text-slate-500">
-                  把考試、目標與每日讀書節奏整理在同一頁。這裡的設定會影響倒數、計時器與學習紀錄的呈現。
-                </p>
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-2 lg:min-w-[360px]">
-              <TopPill label="考試" value={currentExam?.shortName || '未設定'} />
-              <TopPill label="目標" value={targetSchool || '未填寫'} />
-              <TopPill label="每日" value={`${dailyGoalHours}h ${dailyGoalMinutes}m`} />
-            </div>
-          </div>
+    <div className="settings-page animate-fade-in">
+      <div className="settings-shell">
+        <button className="settings-back" onClick={onClose}><ArrowLeft size={15} />回到首頁</button>
+        <header className="settings-hero">
+          <div><p className="settings-eyebrow"><Settings size={14} /> MAKE IT YOURS</p><h1>個人設定<span>。</span></h1><p className="settings-intro">把想抵達的地方，和每天前進的節奏，設定成你的樣子。</p></div>
+          <div className="settings-overview"><TopPill label="目前考試" value={currentExam?.shortName || '未設定'} /><TopPill label="目標學校" value={targetSchool || '未填寫'} /><TopPill label="每日專注" value={`${dailyGoalHours > 0 ? `${dailyGoalHours} 小時 ` : ''}${dailyGoalMinutes > 0 ? `${dailyGoalMinutes} 分` : ''}`} /></div>
         </header>
-
-        <div className="grid flex-grow gap-5 lg:grid-cols-[250px_minmax(0,1fr)]">
-          <aside className="hidden lg:block">
-            <div className="sticky top-6 rounded-[1.5rem] border border-white/70 bg-white/85 p-3 shadow-xl shadow-slate-200/60 backdrop-blur-xl">
-              <SectionButton active={section === 'exam'} icon={<CalendarDays className="h-4 w-4" />} title="考試設定" desc="類別、年份與日期" onClick={() => setSection('exam')} />
-              <SectionButton active={section === 'goal'} icon={<Target className="h-4 w-4" />} title="目標與節奏" desc="學校、科系、每日目標" onClick={() => setSection('goal')} />
-              <SectionButton active={section === 'data'} icon={<Shield className="h-4 w-4" />} title="資料管理" desc="重置與清理" onClick={() => setSection('data')} />
-            </div>
-          </aside>
-
-          <div className="sticky top-3 z-30 rounded-[1.5rem] border border-slate-200/80 bg-slate-50/95 p-2 shadow-lg shadow-slate-200/60 backdrop-blur-xl lg:hidden">
-            <div className="grid grid-cols-3 gap-2">
-              <MobileSection active={section === 'exam'} label="考試" icon={<CalendarDays className="h-4 w-4" />} onClick={() => setSection('exam')} />
-              <MobileSection active={section === 'goal'} label="目標" icon={<Target className="h-4 w-4" />} onClick={() => setSection('goal')} />
-              <MobileSection active={section === 'data'} label="資料" icon={<Shield className="h-4 w-4" />} onClick={() => setSection('data')} />
-            </div>
-          </div>
-
-          <main className="min-w-0 rounded-[1.5rem] border border-white/70 bg-slate-50/80 p-4 shadow-xl shadow-slate-200/60 backdrop-blur-xl sm:p-6 xl:p-8">
+        <nav className="settings-nav" aria-label="個人設定分類">
+          <SectionButton active={section === 'exam'} icon={<CalendarDays size={17} />} title="考試設定" desc="考試與倒數日期" onClick={() => setSection('exam')} />
+          <SectionButton active={section === 'goal'} icon={<Target size={17} />} title="目標與節奏" desc="學校與每日專注" onClick={() => setSection('goal')} />
+          <SectionButton active={section === 'data'} icon={<Shield size={17} />} title="資料管理" desc="整理與重新開始" onClick={() => setSection('data')} />
+        </nav>
+        <div className="settings-layout">
+          <div className="settings-content" role="region" aria-label={section === 'exam' ? '考試設定' : section === 'goal' ? '目標與節奏' : '資料管理'}>
             {section === 'exam' && (
               <div className="space-y-6 animate-fade-in">
-                <SettingsBlock title="選擇考試" desc="先選考試類型，再選年份。若切換到不同考試類型，系統會先請你確認。">
+                <SettingsBlock title="選擇考試" desc="選擇你的備考舞台，再挑選考試年份。">
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {categories.map((category) => {
                       const active = selectedCategory === category.id;
@@ -162,7 +141,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         <button
                           key={category.id}
                           onClick={() => setSelectedCategory(category.id)}
-                          className={`rounded-2xl border px-4 py-3 text-sm font-black transition-all ${active ? `${tone.active} shadow-md` : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-900'}`}
+                          aria-pressed={active}
+                          className={`settings-category rounded-2xl border px-4 py-3 text-sm font-black transition-all ${active ? `${tone.active} shadow-md` : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-900'}`}
                         >
                           {category.name}
                         </button>
@@ -179,12 +159,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         <button
                           key={exam.id}
                           onClick={() => chooseExam(exam)}
-                          className={`rounded-2xl border-2 p-4 text-left transition-all ${active ? `${tone.active} shadow-md` : 'border-slate-100 bg-white hover:border-slate-200 hover:shadow-sm'}`}
+                          aria-pressed={active}
+                          className={`settings-exam-card rounded-2xl border-2 p-4 text-left transition-all ${active ? `${tone.active} shadow-md` : 'border-slate-100 bg-white hover:border-slate-200 hover:shadow-sm'}`}
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <div className={`text-2xl font-black ${active ? tone.text : 'text-slate-800'}`}>{exam.year} 年</div>
                               <div className="mt-1 text-xs font-bold text-slate-400">{exam.name}</div>
+                              <p className="settings-exam-date">{exam.date.split('T')[0].replaceAll('-', '/')}</p>
                             </div>
                             {active && <CheckCircle2 className={`h-5 w-5 ${tone.text}`} />}
                           </div>
@@ -215,6 +197,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 <SettingsBlock title="考試日期" desc="如需自訂倒數日期，可以在這裡調整。">
                   <IconInput icon={<Clock className="h-5 w-5" />}>
                     <input
+                      aria-label="考試日期"
                       type="datetime-local"
                       value={targetDateStr}
                       onChange={(event) => event.target.value && setTargetDateStr(event.target.value)}
@@ -227,33 +210,47 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
             {section === 'goal' && (
               <div className="space-y-6 animate-fade-in">
-                <SettingsBlock title="備考目標" desc="把目標學校與科系填進來，首頁、計時器與祈願功能都會圍繞這個目標。">
+                <SettingsBlock title="備考目標" desc="先編輯目標學校與科系，按下儲存後才會更新首頁、計時器與祈願功能。">
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <IconInput icon={<GraduationCap className="h-5 w-5" />}>
+                    <label className="settings-field"><span>目標學校</span><IconInput icon={<GraduationCap className="h-5 w-5" />}>
                       <input
                         type="text"
-                        value={targetSchool}
+                        value={draftTargetSchool}
                         maxLength={20}
-                        onChange={(event) => setTargetSchool(event.target.value)}
+                        onChange={(event) => setDraftTargetSchool(event.target.value)}
                         className="w-full bg-transparent py-3.5 pl-12 pr-4 text-sm font-bold text-slate-800 outline-none"
-                        placeholder="目標學校，例如：國立臺灣大學"
+                        aria-label="目標學校"
+                        placeholder={currentExam?.category === 'cap' ? '目標學校，例如：建國中學' : '目標學校，例如：國立臺灣大學'}
                       />
-                    </IconInput>
-                    <IconInput icon={<Search className="h-5 w-5" />}>
+                    </IconInput></label>
+                    <label className="settings-field"><span>目標科系或班別</span><IconInput icon={<Search className="h-5 w-5" />}>
                       <input
                         type="text"
-                        value={targetMajor}
+                        value={draftTargetMajor}
                         maxLength={20}
-                        onChange={(event) => setTargetMajor(event.target.value)}
+                        onChange={(event) => setDraftTargetMajor(event.target.value)}
                         className="w-full bg-transparent py-3.5 pl-12 pr-4 text-sm font-bold text-slate-800 outline-none"
-                        placeholder="目標科系，例如：醫學系"
+                        aria-label="目標科系或班別"
+                        placeholder={currentExam?.category === 'cap' ? '目標科別或班別（選填）' : '目標科系，例如：醫學系'}
                       />
-                    </IconInput>
+                    </IconInput></label>
+                  </div>
+                  <div className="mt-4 flex items-center justify-end gap-3">
+                    {hasTargetChanges && <span className="text-xs font-bold text-amber-600">尚有未儲存的修改</span>}
+                    <button
+                      type="button"
+                      onClick={saveTarget}
+                      disabled={!hasTargetChanges}
+                      className="settings-save inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-indigo-200/70 transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      儲存目標
+                    </button>
                   </div>
                 </SettingsBlock>
 
                 <SettingsBlock title="每日讀書目標" desc="設定一個真的做得到的每日專注時間。太高不一定比較好，穩定比較重要。">
-                  <div className="rounded-[1.5rem] border border-orange-100 bg-orange-50/70 p-5">
+                  <div className="settings-daily-goal rounded-[1.5rem] border border-orange-100 bg-orange-50/70 p-5">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                       <div>
                         <div className="flex items-center gap-2 text-sm font-black text-orange-700">
@@ -277,6 +274,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                           style={{ width: `${((dailyGoal - 30) / (600 - 30)) * 100}%` }}
                         />
                         <input
+                          aria-label="每日讀書目標（分鐘）"
                           type="range"
                           min="30"
                           max="600"
@@ -300,7 +298,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               <div className="space-y-6 animate-fade-in">
                 {confirmResetType ? (
                   <SettingsBlock title={resetCopy[confirmResetType].title} desc={resetCopy[confirmResetType].body}>
-                    <div className="rounded-[1.5rem] border border-red-100 bg-red-50 p-5">
+                    <div className="settings-reset-confirm rounded-[1.5rem] border border-red-100 bg-red-50 p-5">
                       <div className="flex gap-3">
                         <AlertTriangle className="mt-1 h-5 w-5 flex-shrink-0 text-red-500" />
                         <div>
@@ -329,7 +327,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 )}
               </div>
             )}
-          </main>
+          </div>
         </div>
       </div>
     </div>
@@ -337,59 +335,23 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 };
 
 const TopPill: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <div className="min-w-0 rounded-2xl border border-slate-100 bg-white/80 px-3 py-3 text-center shadow-sm">
-    <div className="truncate text-lg font-black text-slate-900">{value}</div>
-    <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</div>
-  </div>
+  <div className="settings-overview-item"><span>{label}</span><strong title={value}>{value}</strong></div>
 );
 
 const SectionButton: React.FC<{ active: boolean; icon: React.ReactNode; title: string; desc: string; onClick: () => void }> = ({ active, icon, title, desc, onClick }) => (
-  <button onClick={onClick} className={`mb-1.5 flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-all ${active ? 'border-indigo-200 bg-indigo-50 text-indigo-800 shadow-sm' : 'border-transparent text-slate-500 hover:border-slate-200 hover:bg-white hover:text-slate-900'}`}>
-    <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">{icon}</span>
-    <span>
-      <span className="block text-sm font-black">{title}</span>
-      <span className="block text-xs font-semibold opacity-70">{desc}</span>
-    </span>
-  </button>
-);
-
-const MobileSection: React.FC<{ active: boolean; label: string; icon: React.ReactNode; onClick: () => void }> = ({ active, label, icon, onClick }) => (
-  <button onClick={onClick} className={`min-h-[58px] rounded-2xl px-2.5 py-2 text-center transition-all flex flex-col items-center justify-center gap-1 ${active ? 'bg-slate-950 text-white shadow-lg shadow-slate-300/60' : 'bg-white text-slate-500 border border-slate-200 shadow-sm'}`}>
-    {icon}
-    <span className="text-xs font-black leading-none">{label}</span>
-  </button>
+  <button onClick={onClick} aria-pressed={active}><span className="settings-nav-icon">{icon}</span><span><strong>{title}</strong><small>{desc}</small></span><ChevronRight size={14} /></button>
 );
 
 const SettingsBlock: React.FC<{ title: string; desc: string; children: React.ReactNode }> = ({ title, desc, children }) => (
-  <section className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-    <div className="mb-5">
-      <h3 className="text-lg font-black text-slate-950">{title}</h3>
-      <p className="mt-1 text-sm font-semibold leading-relaxed text-slate-500">{desc}</p>
-    </div>
-    {children}
-  </section>
+  <section className="settings-block"><div className="settings-block-heading"><h2>{title}</h2><p>{desc}</p></div>{children}</section>
 );
 
 const IconInput: React.FC<{ icon: React.ReactNode; children: React.ReactNode }> = ({ icon, children }) => (
-  <div className="relative rounded-[1.25rem] border-2 border-slate-100 bg-slate-50 transition-all focus-within:border-indigo-300 focus-within:bg-white focus-within:shadow-md hover:border-slate-200">
-    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">{icon}</div>
-    {children}
-  </div>
+  <div className="settings-input"><span>{icon}</span>{children}</div>
 );
 
 const ResetButton: React.FC<{ icon: React.ReactNode; title: string; desc: string; onClick: () => void }> = ({ icon, title, desc, onClick }) => (
-  <button onClick={onClick} className="group flex w-full items-center justify-between rounded-[1.25rem] border-2 border-slate-100 bg-white p-4 text-left transition-all hover:border-red-200 hover:bg-red-50 hover:shadow-md">
-    <div className="flex items-center gap-4">
-      <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-100 bg-slate-50 text-slate-400 shadow-sm transition-all group-hover:border-red-600 group-hover:bg-red-500 group-hover:text-white">
-        {icon}
-      </div>
-      <div>
-        <div className="text-base font-black text-slate-700 group-hover:text-red-700">{title}</div>
-        <div className="mt-0.5 text-xs font-semibold text-slate-400">{desc}</div>
-      </div>
-    </div>
-    <ChevronRight className="h-5 w-5 text-slate-300 transition-colors group-hover:text-red-500" />
-  </button>
+  <button onClick={onClick} className="settings-reset-button"><span className="settings-reset-icon">{icon}</span><span><strong>{title}</strong><small>{desc}</small></span><ChevronRight size={16} /></button>
 );
 
 export default SettingsPage;

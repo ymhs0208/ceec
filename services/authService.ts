@@ -1,4 +1,5 @@
-import { AppData, AuthResponse, RankingItem, StudySession, User } from '../types';
+import { safeLocalStorage } from '../utils/storage';
+import { AppData, AuthResponse, RankingItem, StudySession, TempleSyncData, User } from '../types';
 import { initialAuthCallbackHref, requireSupabase } from './supabaseClient';
 
 const AUTH_REQUIRED = 'AUTH_REQUIRED';
@@ -7,7 +8,91 @@ const CONSUMED_AUTH_CALLBACK_HREF_KEY = 'gsat_consumed_auth_callback_href';
 const AUTH_ERROR_PATTERN =
   /session.*missing|session.*expired|jwt.*expired|invalid jwt|refresh token|not authenticated|auth session missing|user not found/i;
 
+type StudyLogsResponse = {
+  success: boolean;
+  sessions?: StudySession[];
+  message?: string;
+  code?: string;
+};
+
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+
+/**
+ * App-state is intentionally handled by a same-origin server endpoint.  The
+ * endpoint validates the Supabase access token and encrypts the payload with a
+ * server-only key; do not fall back to direct `app_state` queries here.
+ */
+const appStateRequest = async <T>(method: 'GET' | 'PUT', body?: AppData, revision?: string | null, expectedOwner?: string): Promise<T> => {
+  const client = requireSupabase();
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  if (sessionError || !sessionData.session?.access_token || (expectedOwner && sessionData.session.user?.id !== expectedOwner)) {
+    throw Object.assign(new Error('Authentication session missing'), { status: 401 });
+  }
+
+  const response = await fetch('/api/app-state', {
+    method,
+    headers: {
+      Authorization: `Bearer ${sessionData.session.access_token}`,
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    ...(body ? { body: JSON.stringify({ data: body, revision }) } : {}),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw Object.assign(new Error(payload?.error || 'Unable to synchronize encrypted data'), {
+      status: response.status,
+      code: response.status >= 500 ? 'APP_STATE_UNAVAILABLE' : payload?.code,
+    });
+  }
+  return response.json() as Promise<T>;
+};
+
+const templeRequest = async <T>(method: 'GET' | 'POST', body?: { actionId: string; ritualType: 'lamp' | 'fortune' | 'ticket' }): Promise<T> => {
+  const client = requireSupabase();
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  if (sessionError || !sessionData.session?.access_token) throw Object.assign(new Error('Authentication session missing'), { status: 401 });
+  const response = await fetch('/api/temple', {
+    method,
+    headers: { Authorization: `Bearer ${sessionData.session.access_token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw Object.assign(new Error(payload?.error || 'Temple request failed'), { status: response.status, code: payload?.code });
+  return payload.data as T;
+};
+
+const studyLogRequest = async (sessions: StudySession[], expectedOwner?: string): Promise<TempleSyncData> => {
+  const client = requireSupabase();
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  if (sessionError || !sessionData.session?.access_token || (expectedOwner && sessionData.session.user?.id !== expectedOwner)) {
+    throw Object.assign(new Error('Authentication session missing'), { status: 401 });
+  }
+  const response = await fetch('/api/study-logs', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${sessionData.session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    // The server accepts a small batch so an interrupted sync can retry all
+    // pending records atomically from the client's point of view.  Keep the
+    // original completion timestamp: community statistics use it to decide
+    // whether a session belongs to today in Asia/Taipei.
+    body: JSON.stringify({
+      sessions: sessions.map((session) => ({
+        sessionId: session.id,
+        subjectName: session.subjectName,
+        durationMinutes: session.durationMinutes,
+        timestamp: session.timestamp,
+      })),
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw Object.assign(new Error(payload?.error || 'Unable to record study session'), { status: response.status, code: payload?.code });
+  }
+  return payload.temple as TempleSyncData;
+};
 
 const getAuthRedirectBase = (): string => {
   const url = new URL(window.location.href);
@@ -29,13 +114,21 @@ const formatDate = (value?: string | null): string | undefined => {
 };
 
 const errorMessage = (error: any, fallback: string): string => {
+  if (error?.code === 'TEMPLE_SETUP_REQUIRED') return '香火幣帳本尚未完成設定，請通知管理員安裝專注與香火幣帳本更新。';
+  if (error?.code === 'STUDY_CREDIT_UNCONFIRMED') return '專注紀錄可能已儲存，但香火幣收據尚未確認，不能視為已發幣。請保留紀錄並檢查帳本更新。';
   const message = String(error?.message || '');
   const status = Number(error?.status || error?.statusCode || 0);
+  if (status === 409 && /overlap/i.test(message)) return '這筆專注與已入帳紀錄的時段重疊，不能重複發幣；請核對是否在多個裝置同時計時。';
+  if (status === 409 && /already recorded session/i.test(message)) return '這筆紀錄的編號已入帳，但內容不同，請保留紀錄並聯絡支援核對。';
+  if (status === 400 && /backfill period/i.test(message)) return '這筆紀錄已超過 7 天補傳期限，或時間資料不合法，請保留紀錄並聯絡支援核對。';
   if (!navigator.onLine || /failed to fetch|network|load failed/i.test(message)) {
     return '網路連線異常，請確認網路後再試一次';
   }
   if (status === 429 || /rate limit|too many requests|over_email_send_rate_limit/i.test(message)) {
     return '操作次數過多，請稍候幾分鐘再試';
+  }
+  if (error?.code === 'APP_STATE_UNAVAILABLE') {
+    return '雲端資料暫時無法同步，請稍後再試';
   }
   if (AUTH_ERROR_PATTERN.test(message)) {
     return '登入已失效，請重新登入';
@@ -124,6 +217,7 @@ const toUser = (authUser: any, profile?: any): User => ({
   name: profile?.name || authUser.user_metadata?.name || authUser.email?.split('@')[0] || '使用者',
   registrationDate: formatDate(profile?.created_at || authUser.created_at),
   lastLoginDate: formatDate(profile?.last_login_at || authUser.last_sign_in_at),
+  needsOnboarding: authUser.user_metadata?.onboarding_complete === false,
 });
 
 const getCurrentAuthUser = async (): Promise<any | null> => {
@@ -138,14 +232,12 @@ const getCurrentAuthUser = async (): Promise<any | null> => {
   return data.user;
 };
 
-const upsertCurrentDevice = async (userId: string): Promise<void> => {
+const upsertCurrentDevice = async (_userId: string): Promise<void> => {
   const client = requireSupabase();
-  const { error } = await client.from('devices').upsert({
-    user_id: userId,
-    device_id: authService.getDeviceId(),
-    device_name: authService.getDeviceName(),
-    last_active_at: new Date().toISOString(),
-  }, { onConflict: 'user_id,device_id' });
+  const { error } = await client.rpc('register_current_device', {
+    p_device_id: authService.getDeviceId(),
+    p_device_name: authService.getDeviceName(),
+  });
   if (error) throw error;
 };
 
@@ -153,14 +245,14 @@ const getCurrentAppUser = async (): Promise<any | null> => {
   const client = requireSupabase();
   const authUser = await getCurrentAuthUser();
   if (!authUser) return null;
-  const { data: device, error } = await client
-    .from('devices')
-    .select('id')
-    .eq('user_id', authUser.id)
-    .eq('device_id', authService.getDeviceId())
-    .maybeSingle();
-  if (error) throw error;
-  return device ? authUser : null;
+  try {
+    // Bind existing devices to the signed Auth session; revoked JWTs cannot register.
+    await upsertCurrentDevice(authUser.id);
+    return authUser;
+  } catch (error) {
+    if (isAuthFailureError(error)) return null;
+    throw error;
+  }
 };
 
 const touchCurrentDevice = async (userId: string): Promise<void> => {
@@ -175,13 +267,13 @@ const touchCurrentDevice = async (userId: string): Promise<void> => {
 
 const loadAccount = async (authUser: any): Promise<AuthResponse> => {
   const client = requireSupabase();
-  const [{ data: profile, error: profileError }, { data: state, error: stateError }] = await Promise.all([
+  const [{ data: profile, error: profileError }, state] = await Promise.all([
     client.from('profiles').select('*').eq('id', authUser.id).maybeSingle(),
-    client.from('app_state').select('data').eq('user_id', authUser.id).maybeSingle(),
+    appStateRequest<{ data: AppData | null }>('GET'),
   ]);
 
-  if (profileError || stateError) {
-    const error = profileError || stateError;
+  if (profileError) {
+    const error = profileError;
     return isAuthFailureError(error)
       ? authFailure()
       : { success: false, message: errorMessage(error, '讀取雲端資料失敗') };
@@ -189,8 +281,8 @@ const loadAccount = async (authUser: any): Promise<AuthResponse> => {
 
   const accountData = {
     ...(state?.data || {}),
-    team: profile?.team ?? state?.data?.team ?? '',
-    targetExam: profile?.exam_type || state?.data?.targetExam,
+    team: state?.data?.team ?? profile?.team ?? '',
+    targetExam: state?.data?.targetExam || profile?.exam_type,
   } as AppData;
 
   await upsertCurrentDevice(authUser.id);
@@ -204,10 +296,10 @@ const loadAccount = async (authUser: any): Promise<AuthResponse> => {
 
 export const authService = {
   getDeviceId(): string {
-    let deviceId = localStorage.getItem('deviceId');
+    let deviceId = safeLocalStorage.getItem('deviceId');
     if (!deviceId) {
       deviceId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
-      localStorage.setItem('deviceId', deviceId);
+      safeLocalStorage.setItem('deviceId', deviceId);
     }
     return deviceId;
   },
@@ -231,7 +323,7 @@ export const authService = {
     return `${browser} on ${os}`;
   },
 
-  isAuthError(response: AuthResponse): boolean {
+  isAuthError(response: Pick<AuthResponse, 'code'>): boolean {
     return response.code === AUTH_REQUIRED;
   },
 
@@ -250,8 +342,8 @@ export const authService = {
     try {
       const client = requireSupabase();
       const { data } = client.auth.onAuthStateChange((event: string, session: any) => {
-        const hasLocalAccount = Boolean(localStorage.getItem('gsat_user_profile'));
-        const isIntentionalLogout = Boolean(localStorage.getItem(LOGOUT_PENDING_KEY));
+        const hasLocalAccount = Boolean(safeLocalStorage.getItem('gsat_user_profile'));
+        const isIntentionalLogout = Boolean(safeLocalStorage.getItem(LOGOUT_PENDING_KEY));
         if (
           !isIntentionalLogout &&
           hasLocalAccount &&
@@ -318,6 +410,14 @@ export const authService = {
       const isEmailLinkCallback = (href = getCallbackHref()) =>
         hasCallbackParams(href);
 
+      // A password-recovery link also contains an auth code and creates a
+      // short-lived session. It must not be handled as a magic-login link,
+      // otherwise opening the reset email takes the user straight into the app.
+      const isPasswordRecoveryCallback = (href = getCallbackHref()) => {
+        const params = getEmailLinkParams(href);
+        return params.get('reset') === 'true' || params.get('type') === 'recovery';
+      };
+
       const cleanAuthCallbackUrl = () => {
         markInitialCallbackHrefConsumed();
         if (isEmailLinkCallback(window.location.href)) {
@@ -365,7 +465,7 @@ export const authService = {
         const linkSignature = getEmailLinkSignature();
         return Boolean(
           linkSignature &&
-          localStorage.getItem('gsat_last_processed_login_link') === linkSignature
+          safeLocalStorage.getItem('gsat_last_processed_login_link') === linkSignature
         );
       };
 
@@ -382,14 +482,14 @@ export const authService = {
       const shouldRestoreSession = () =>
         isEmailLinkCallback() ||
         (
-          !localStorage.getItem(LOGOUT_PENDING_KEY) &&
-          !localStorage.getItem('gsat_user_profile')
+          !safeLocalStorage.getItem(LOGOUT_PENDING_KEY) &&
+          !safeLocalStorage.getItem('gsat_user_profile')
         );
 
       const finishLogin = async (authUser: any) => {
-        if (handled || !authUser || !shouldRestoreSession()) return;
+        if (handled || !authUser || isPasswordRecoveryCallback() || !shouldRestoreSession()) return;
         const linkSignature = getEmailLinkSignature();
-        if (linkSignature && localStorage.getItem('gsat_last_processed_login_link') === linkSignature) {
+        if (linkSignature && safeLocalStorage.getItem('gsat_last_processed_login_link') === linkSignature) {
           handled = true;
           cleanAuthCallbackUrl();
           notifyExpiredLoginLink();
@@ -397,9 +497,9 @@ export const authService = {
         }
 
         handled = true;
-        localStorage.removeItem(LOGOUT_PENDING_KEY);
+        safeLocalStorage.removeItem(LOGOUT_PENDING_KEY);
         if (linkSignature) {
-          localStorage.setItem('gsat_last_processed_login_link', linkSignature);
+          safeLocalStorage.setItem('gsat_last_processed_login_link', linkSignature);
         }
         cleanAuthCallbackUrl();
         await client.from('profiles').update({ last_login_at: new Date().toISOString() }).eq('id', authUser.id);
@@ -407,14 +507,14 @@ export const authService = {
       };
 
       const { data } = client.auth.onAuthStateChange(async (event: string, session: any) => {
-        if (event === 'SIGNED_IN' && isEmailLinkCallback()) {
+        if (event === 'SIGNED_IN' && isEmailLinkCallback() && !isPasswordRecoveryCallback()) {
           setTimeout(() => {
             void finishLogin(session?.user);
           }, 0);
         }
       });
 
-      if (isEmailLinkCallback() && (isProcessedEmailLink() || getEmailLinkError())) {
+      if (!isPasswordRecoveryCallback() && isEmailLinkCallback() && (isProcessedEmailLink() || getEmailLinkError())) {
         handled = true;
         cleanAuthCallbackUrl();
         setTimeout(notifyExpiredLoginLink, 0);
@@ -443,9 +543,9 @@ export const authService = {
       if (error || !data.user) {
         return { success: false, message: errorMessage(error, '登入失敗') };
       }
-      localStorage.removeItem(LOGOUT_PENDING_KEY);
+      safeLocalStorage.removeItem(LOGOUT_PENDING_KEY);
       await client.from('profiles').update({ last_login_at: new Date().toISOString() }).eq('id', data.user.id);
-      return loadAccount(data.user);
+      return await loadAccount(data.user);
     } catch (error) {
       return { success: false, message: errorMessage(error, '無法連線至 Supabase') };
     }
@@ -471,9 +571,9 @@ export const authService = {
         return { success: false, message: passkeyErrorMessage(error, '手機金鑰登入失敗') };
       }
 
-      localStorage.removeItem(LOGOUT_PENDING_KEY);
+      safeLocalStorage.removeItem(LOGOUT_PENDING_KEY);
       await client.from('profiles').update({ last_login_at: new Date().toISOString() }).eq('id', data.user.id);
-      return loadAccount(data.user);
+      return await loadAccount(data.user);
     } catch (error) {
       return { success: false, message: passkeyErrorMessage(error, '手機金鑰登入失敗') };
     }
@@ -522,9 +622,9 @@ export const authService = {
         return { success: false, message: errorMessage(error, '一次性驗證碼錯誤或已失效') };
       }
 
-      localStorage.removeItem(LOGOUT_PENDING_KEY);
+      safeLocalStorage.removeItem(LOGOUT_PENDING_KEY);
       await client.from('profiles').update({ last_login_at: new Date().toISOString() }).eq('id', data.user.id);
-      return loadAccount(data.user);
+      return await loadAccount(data.user);
     } catch (error) {
       return { success: false, message: errorMessage(error, '一次性驗證碼驗證失敗') };
     }
@@ -559,16 +659,18 @@ export const authService = {
   ): Promise<AuthResponse> {
     try {
       const client = requireSupabase();
+      const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
       const { data, error } = await client.auth.signUp({
         email: normalizeEmail(email),
         password,
         options: {
           data: {
-            name,
+            name: name || normalizeEmail(email).split('@')[0],
             exam_type: examType || '116gsat',
             team: team || '',
+            onboarding_complete: false,
           },
-          emailRedirectTo: getAuthRedirectBase(),
+          ...(isLocalHost ? {} : { emailRedirectTo: getAuthRedirectBase() }),
         },
       });
       if (error) return { success: false, message: errorMessage(error, '註冊失敗') };
@@ -587,24 +689,18 @@ export const authService = {
     }
   },
 
-  async syncData(_email: string, _password: string, data: AppData, _encryptionKey: string): Promise<AuthResponse> {
+  async syncData(_email: string, _password: string, data: AppData, _encryptionKey: string, revision?: string | null): Promise<AuthResponse> {
     try {
       const client = requireSupabase();
       const authUser = await getCurrentAppUser();
-      if (!authUser) return authFailure();
+      if (!authUser || authUser.id !== _encryptionKey) return authFailure();
 
-      const [{ error: stateError }, { error: profileError }] = await Promise.all([
-        client.from('app_state').upsert({
-          user_id: authUser.id,
-          data,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'user_id' }),
-        client.from('profiles').update({
+      await appStateRequest('PUT', data, revision, _encryptionKey);
+      const { error: profileError } = await client.from('profiles').update({
           team: data.team || '',
           exam_type: data.targetExam || '',
-        }).eq('id', authUser.id),
-      ]);
-      const error = stateError || profileError;
+        }).eq('id', authUser.id);
+      const error = profileError;
       if (error) {
         return isAuthFailureError(error)
           ? authFailure()
@@ -613,6 +709,7 @@ export const authService = {
       await touchCurrentDevice(authUser.id);
       return { success: true };
     } catch (error) {
+      if ((error as { code?: string }).code === 'STATE_CONFLICT') return { success: false, code: 'STATE_CONFLICT', message: '其他裝置更新了資料，正在重新合併。' };
       return isAuthFailureError(error)
         ? authFailure()
         : { success: false, message: errorMessage(error, '同步失敗') };
@@ -623,12 +720,13 @@ export const authService = {
     try {
       const client = requireSupabase();
       const authUser = await getCurrentAppUser();
-      if (!authUser) return authFailure();
-      const [{ data, error }, { data: profile, error: profileError }] = await Promise.all([
-        client.from('app_state').select('data').eq('user_id', authUser.id).maybeSingle(),
+      if (!authUser || authUser.id !== _encryptionKey) return authFailure();
+      const [stateResponse, { data: profile, error: profileError }] = await Promise.all([
+        appStateRequest<{ data: AppData | null; revision: string | null }>('GET', undefined, undefined, _encryptionKey),
         client.from('profiles').select('team,exam_type').eq('id', authUser.id).maybeSingle(),
       ]);
-      const readError = error || profileError;
+      const encryptedState = stateResponse.data;
+      const readError = profileError;
       if (readError) {
         return isAuthFailureError(readError)
           ? authFailure()
@@ -637,10 +735,11 @@ export const authService = {
       await touchCurrentDevice(authUser.id);
       return {
         success: true,
+        stateRevision: stateResponse.revision,
         data: {
-          ...(data?.data || {}),
-          team: profile?.team ?? data?.data?.team ?? '',
-          targetExam: profile?.exam_type || data?.data?.targetExam,
+          ...(encryptedState || {}),
+          team: encryptedState?.team ?? profile?.team ?? '',
+          targetExam: encryptedState?.targetExam || profile?.exam_type,
         } as AppData,
       };
     } catch (error) {
@@ -650,28 +749,77 @@ export const authService = {
     }
   },
 
+  // study_logs is the durable, per-session source used by rankings. Reading it
+  // here lets the personal history repair itself if a past app_state write was
+  // interrupted or overwritten by another device.
+  async getStudySessions(sinceTimestamp?: number): Promise<StudyLogsResponse> {
+    try {
+      const client = requireSupabase();
+      const authUser = await getCurrentAppUser();
+      if (!authUser) return { ...authFailure(), sessions: [] };
+
+      const data: { session_id: string; subject_name: string; duration_minutes: number; session_timestamp: number }[] = [];
+      // Page explicitly: PostgREST otherwise truncates long histories. A stable
+      // second sort also prevents equal completion times crossing page boundaries.
+      const pageSize = 500;
+      for (let offset = 0; ; offset += pageSize) {
+        let query = client.from('study_logs')
+          .select('session_id,subject_name,duration_minutes,session_timestamp')
+          .eq('user_id', authUser.id)
+          .order('session_timestamp', { ascending: true })
+          .order('session_id', { ascending: true })
+          .range(offset, offset + pageSize - 1);
+        if (sinceTimestamp !== undefined) query = query.gte('session_timestamp', sinceTimestamp);
+        const { data: page, error } = await query;
+        if (error) {
+          return isAuthFailureError(error)
+            ? { ...authFailure(), sessions: [] }
+            : { success: false, sessions: [], message: errorMessage(error, '讀取專注紀錄失敗') };
+        }
+        data.push(...(page || []));
+        if (!page || page.length < pageSize) break;
+      }
+
+      return {
+        success: true,
+        sessions: (data || []).map((row: {
+          session_id: string;
+          subject_name: string;
+          duration_minutes: number;
+          session_timestamp: number;
+        }) => ({
+          id: row.session_id,
+          // Older rows do not contain subject_id. subjectName is stable and
+          // keeps those rows grouped correctly in the learning-history view.
+          subjectId: row.subject_name,
+          subjectName: row.subject_name,
+          durationMinutes: row.duration_minutes,
+          timestamp: row.session_timestamp,
+        })),
+      };
+    } catch (error) {
+      return isAuthFailureError(error)
+        ? { ...authFailure(), sessions: [] }
+        : { success: false, sessions: [], message: errorMessage(error, '讀取專注紀錄失敗') };
+    }
+  },
+
   async logSession(_email: string, _password: string, session: StudySession, team?: string): Promise<AuthResponse> {
     try {
       const client = requireSupabase();
       const authUser = await getCurrentAppUser();
-      if (!authUser) return authFailure();
-      const { error: logError } = await client.from('study_logs').upsert({
-        user_id: authUser.id,
-        session_id: session.id,
-        subject_name: session.subjectName,
-        duration_minutes: session.durationMinutes,
-        session_timestamp: session.timestamp,
-      }, { onConflict: 'user_id,session_id' });
+      if (!authUser || normalizeEmail(authUser.email || '') !== normalizeEmail(_email)) return authFailure();
+      const temple = await studyLogRequest([session], authUser.id);
       const { error: profileError } = team !== undefined
         ? await client.from('profiles').update({ team }).eq('id', authUser.id)
         : { error: null };
-      const error = logError || profileError;
+      const error = profileError;
       if (error) {
         return isAuthFailureError(error)
-          ? authFailure()
-          : { success: false, message: errorMessage(error, '寫入專注紀錄失敗') };
+          ? { ...authFailure(), syncedStudySessionIds: [session.id], data: temple as unknown as AppData }
+          : { success: false, syncedStudySessionIds: [session.id], data: temple as unknown as AppData, message: '專注與香火幣已入帳，但隊伍資料暫時更新失敗。' };
       }
-      return { success: true };
+      return { success: true, syncedStudySessionIds: [session.id], data: temple as unknown as AppData };
     } catch (error) {
       return isAuthFailureError(error)
         ? authFailure()
@@ -679,43 +827,79 @@ export const authService = {
     }
   },
 
-  async syncStudyLogs(sessions: StudySession[], team?: string): Promise<AuthResponse> {
+  async getTempleState(): Promise<{ success: boolean; data?: TempleSyncData; message?: string; code?: string }> {
     try {
-      const client = requireSupabase();
-      const authUser = await getCurrentAppUser();
-      if (!authUser) return authFailure();
-
-      const rows = sessions
-        .filter(session => session.id && session.durationMinutes > 0)
-        .map(session => ({
-          user_id: authUser.id,
-          session_id: session.id,
-          subject_name: session.subjectName,
-          duration_minutes: session.durationMinutes,
-          session_timestamp: session.timestamp,
-        }));
-
-      const { error: logError } = rows.length > 0
-        ? await client.from('study_logs').upsert(rows, { onConflict: 'user_id,session_id' })
-        : { error: null };
-      const { error: profileError } = team !== undefined
-        ? await client.from('profiles').update({ team }).eq('id', authUser.id)
-        : { error: null };
-      const error = logError || profileError;
-      if (error) {
-        return isAuthFailureError(error)
-          ? authFailure()
-          : { success: false, message: errorMessage(error, '同步讀書統計失敗') };
-      }
-      return { success: true };
+      return { success: true, data: await templeRequest<TempleSyncData>('GET') };
     } catch (error) {
       return isAuthFailureError(error)
-        ? authFailure()
-        : { success: false, message: errorMessage(error, '同步讀書統計失敗') };
+        ? { success: false, code: AUTH_REQUIRED, message: '登入已失效' }
+        : { success: false, message: errorMessage(error, '讀取香火幣失敗') };
     }
   },
 
-  async getRanking(_email?: string, team?: string): Promise<{ globalRanking: RankingItem[]; teamRanking: any[] }> {
+  async performTempleRitual(actionId: string, ritualType: 'lamp' | 'fortune' | 'ticket'): Promise<{ success: boolean; data?: TempleSyncData; message?: string; code?: string }> {
+    try {
+      return { success: true, data: await templeRequest<TempleSyncData>('POST', { actionId, ritualType }) };
+    } catch (error) {
+      return isAuthFailureError(error)
+        ? { success: false, code: AUTH_REQUIRED, message: '登入已失效' }
+        : { success: false, message: errorMessage(error, '儀式執行失敗') };
+    }
+  },
+
+  async syncStudyLogs(sessions: StudySession[], team?: string, expectedOwner?: string): Promise<AuthResponse> {
+    const syncedStudySessionIds: string[] = [];
+    let temple: TempleSyncData | undefined;
+    try {
+      const client = requireSupabase();
+      const authUser = await getCurrentAppUser();
+      if (!authUser || (expectedOwner && authUser.id !== expectedOwner)) return authFailure();
+      // Previously this method only updated the profile team.  The sync loop
+      // then marked pending sessions as sent even though no study_logs rows
+      // had been created, leaving the community page permanently at zero.
+      // The endpoint limits a request to 50 records.  Splitting here also
+      // lets an existing local history be safely backfilled after an upgrade.
+      let rejected = false;
+      for (let index = 0; index < sessions.length; index += 50) {
+        const batch = sessions.slice(index, index + 50);
+        try {
+          temple = await studyLogRequest(batch, authUser.id);
+          syncedStudySessionIds.push(...batch.map(session => session.id));
+        } catch (error) {
+          if (![400, 409].includes(Number((error as { status?: number }).status))) throw error;
+          // An expired or overlapping record must not prevent unrelated study
+          // on another device from ever being uploaded. Retrying accepted IDs
+          // is safe because the ledger enforces idempotency.
+          for (const session of batch) {
+            try {
+              temple = await studyLogRequest([session], authUser.id);
+              syncedStudySessionIds.push(session.id);
+            } catch (singleError) {
+              if (![400, 409].includes(Number((singleError as { status?: number }).status))) throw singleError;
+              rejected = true;
+            }
+          }
+        }
+      }
+      const { error: profileError } = team !== undefined
+        ? await client.from('profiles').update({ team }).eq('id', authUser.id)
+        : { error: null };
+      const error = profileError;
+      if (error) {
+        return isAuthFailureError(error)
+          ? { ...authFailure(), syncedStudySessionIds }
+          : { success: false, syncedStudySessionIds, data: temple as unknown as AppData, message: errorMessage(error, '同步讀書統計失敗') };
+      }
+      return { success: !rejected, syncedStudySessionIds, data: temple as unknown as AppData,
+        ...(rejected ? { message: '部分專注紀錄超過補傳期限或時段重疊，請至學習歷程檢查同步。' } : {}) };
+    } catch (error) {
+      return isAuthFailureError(error)
+        ? { ...authFailure(), syncedStudySessionIds }
+        : { success: false, syncedStudySessionIds, data: temple as unknown as AppData, message: errorMessage(error, '同步讀書統計失敗') };
+    }
+  },
+
+  async getRanking(_email?: string, team?: string): Promise<{ success: boolean; message?: string; globalRanking: RankingItem[]; teamRanking: any[] }> {
     try {
       const client = requireSupabase();
       const { data, error } = await client.rpc('get_rankings', { requested_team: team || null });
@@ -723,10 +907,11 @@ export const authService = {
       return {
         globalRanking: data?.global_ranking || [],
         teamRanking: data?.team_ranking || [],
+        success: true,
       };
     } catch (error) {
       console.error('Ranking error:', error);
-      return { globalRanking: [], teamRanking: [] };
+      return { success: false, message: errorMessage(error, '排行榜暫時無法載入，請稍後重試'), globalRanking: [], teamRanking: [] };
     }
   },
 
@@ -790,7 +975,7 @@ export const authService = {
         return { success: false, message: errorMessage(error, '重設密碼失敗，請重新開啟信件連結') };
       }
       await client.from('devices').delete().eq('user_id', authUser.id);
-      localStorage.setItem(LOGOUT_PENDING_KEY, 'true');
+      safeLocalStorage.setItem(LOGOUT_PENDING_KEY, 'true');
       const { error: signOutError } = await client.auth.signOut({ scope: 'global' });
       return {
         success: true,
@@ -827,7 +1012,7 @@ export const authService = {
         .delete()
         .eq('user_id', verifyData.user.id);
 
-      localStorage.setItem(LOGOUT_PENDING_KEY, 'true');
+      safeLocalStorage.setItem(LOGOUT_PENDING_KEY, 'true');
       const { error: signOutError } = await client.auth.signOut({ scope: 'global' });
 
       if (deviceError || signOutError || !passkeysRevoked) {
@@ -904,11 +1089,31 @@ export const authService = {
           : { success: false, message: errorMessage(error, '更新帳號資料失敗') };
       }
 
-      return loadAccount({ ...authUser, user_metadata: { ...(authUser.user_metadata || {}), name: nextName } });
+      return await loadAccount({ ...authUser, user_metadata: { ...(authUser.user_metadata || {}), name: nextName } });
     } catch (error) {
       return isAuthFailureError(error)
         ? authFailure()
         : { success: false, message: errorMessage(error, '更新帳號資料失敗') };
+    }
+  },
+
+  async completeOnboarding(updates: { name: string; examType: string; team: string }): Promise<AuthResponse> {
+    try {
+      const client = requireSupabase();
+      const authUser = await getCurrentAppUser();
+      if (!authUser) return authFailure();
+
+      const name = updates.name.trim();
+      if (!name || name.length > 20) return { success: false, message: '暱稱需介於 1 到 20 個字元' };
+      const [{ error: profileError }, { error: metadataError }] = await Promise.all([
+        client.from('profiles').update({ name, exam_type: updates.examType, team: updates.team }).eq('id', authUser.id),
+        client.auth.updateUser({ data: { name, exam_type: updates.examType, team: updates.team, onboarding_complete: true } }),
+      ]);
+      const error = profileError || metadataError;
+      if (error) return isAuthFailureError(error) ? authFailure() : { success: false, message: errorMessage(error, '儲存個人資料失敗') };
+      return await loadAccount({ ...authUser, user_metadata: { ...(authUser.user_metadata || {}), name, onboarding_complete: true } });
+    } catch (error) {
+      return isAuthFailureError(error) ? authFailure() : { success: false, message: errorMessage(error, '儲存個人資料失敗') };
     }
   },
 
@@ -917,16 +1122,16 @@ export const authService = {
       const client = requireSupabase();
       const authUser = await getCurrentAppUser();
       if (!authUser) return authFailure();
-      const { error } = await client.from('devices').delete().eq('device_id', deviceIdToRemove);
-      if (!error && deviceIdToRemove === this.getDeviceId()) {
-        await client.auth.signOut({ scope: 'local' });
-      }
+      const { error } = await client.rpc('revoke_device_sessions', { p_device_id: deviceIdToRemove });
       if (error) {
+        if (error.message?.includes('DEVICE_SESSION_NOT_LINKED')) {
+          return { success: false, message: '此舊裝置尚未建立登入對應，請使用「登出其他所有裝置」撤銷登入。' };
+        }
         return isAuthFailureError(error)
           ? authFailure()
-          : { success: false, message: errorMessage(error, '移除裝置失敗') };
+          : { success: false, message: errorMessage(error, '撤銷裝置登入失敗') };
       }
-      return { success: true };
+      return { success: true, message: '已撤銷該裝置的登入；後續受保護的資料請求會被拒絕。' };
     } catch (error) {
       return isAuthFailureError(error)
         ? authFailure()
@@ -939,24 +1144,13 @@ export const authService = {
       const client = requireSupabase();
       const authUser = await getCurrentAppUser();
       if (!authUser) return authFailure();
-      let query = client.from('devices').delete();
-      if (keepCurrent) query = query.neq('device_id', this.getDeviceId());
-      else query = query.eq('user_id', authUser.id);
-      const { error } = await query;
-      if (!error) {
-        const { error: signOutError } = await client.auth.signOut({
-          scope: keepCurrent ? 'others' : 'global',
-        });
-        if (signOutError) {
-          return { success: false, message: errorMessage(signOutError, '撤銷裝置登入狀態失敗') };
-        }
-      }
+      const { error } = await client.rpc('revoke_other_sessions', { p_keep_current: keepCurrent });
       if (error) {
         return isAuthFailureError(error)
           ? authFailure()
           : { success: false, message: errorMessage(error, '移除裝置失敗') };
       }
-      return { success: true };
+      return { success: true, message: keepCurrent ? '已撤銷其他裝置的登入；後續受保護的資料請求會被拒絕。' : '已撤銷所有裝置的登入，請重新登入。' };
     } catch (error) {
       return isAuthFailureError(error)
         ? authFailure()
@@ -964,8 +1158,29 @@ export const authService = {
     }
   },
 
+  async deleteAccount(): Promise<AuthResponse> {
+    try {
+      const client = requireSupabase();
+      const authUser = await getCurrentAuthUser();
+      if (!authUser) return authFailure();
+
+      const { error } = await client.rpc('delete_own_account');
+      if (error) {
+        return isAuthFailureError(error)
+          ? authFailure()
+          : { success: false, message: errorMessage(error, '刪除帳號失敗，請稍後再試或聯絡我們') };
+      }
+
+      return { success: true, message: '帳號與雲端資料已刪除' };
+    } catch (error) {
+      return isAuthFailureError(error)
+        ? authFailure()
+        : { success: false, message: errorMessage(error, '刪除帳號失敗，請稍後再試或聯絡我們') };
+    }
+  },
+
   async logout(): Promise<void> {
-    localStorage.setItem(LOGOUT_PENDING_KEY, 'true');
+    safeLocalStorage.setItem(LOGOUT_PENDING_KEY, 'true');
     try {
       await requireSupabase().auth.signOut({ scope: 'local' });
     } catch {

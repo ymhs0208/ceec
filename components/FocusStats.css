@@ -1,0 +1,71 @@
+.focus-dashboard { display:block; width:100%; text-align:left; overflow:hidden; border:1px solid #e9e1ed; border-radius:24px; background:#fffdfE; color:#695376; box-shadow:0 8px 25px #43234f04; transition:border-color .2s,box-shadow .2s; }
+.focus-dashboard:hover { border-color:#cdb9d9; box-shadow:0 8px 25px #43234f09; }
+.focus-dashboard:focus-visible { outline:3px solid #bda1d0; outline-offset:4px; }
+.focus-dashboard-header { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:22px 27px 0; }
+.focus-dashboard-eyebrow { display:flex; align-items:center; gap:7px; font-size:9px; font-weight:600; letter-spacing:1.5px; color:#a28bb0; }
+.focus-dashboard-header h3 { margin-top:7px; font-size:20px; font-weight:600; letter-spacing:-.4px; }
+.focus-dashboard-status { display:flex; align-items:center; gap:6px; padding:6px 9px; border:1px solid #e9dfef; border-radius:6px; color:#a287b0; font-size:9px; white-space:nowrap; }
+.focus-dashboard-status > span { width:4px; height:4px; border-radius:50%; background:#bba1cc; }
+.focus-dashboard-content { display:grid; grid-template-columns:minmax(0,.85fr) minmax(0,1.35fr) minmax(0,.8fr); align-items:center; gap:32px; padding:24px 27px 25px; }
+.focus-dashboard-total > span { font-size:10px; color:#a086b0; }
+.focus-dashboard-total > div { display:flex; flex-wrap:wrap; align-items:baseline; column-gap:8px; margin:4px 0 7px; }
+.focus-dashboard-total strong { font-size:52px; line-height:1.1; letter-spacing:-2px; font-weight:450; font-variant-numeric:tabular-nums; }
+.focus-dashboard-total small { font-size:12px; color:#a78db5; }
+.focus-dashboard-total p { font-size:10px; color:#a28aac; line-height:1.7; }
+.focus-dashboard-goal-heading { display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:11px; }
+.focus-dashboard-goal-heading > span { color:#a087ae; font-size:10px; }
+.focus-dashboard-goal-heading strong { font-size:22px; font-weight:450; letter-spacing:-.6px; }
+.focus-dashboard-goal-heading small { font-size:11px; margin-left:2px; }
+.focus-dashboard-progress { height:7px; overflow:hidden; background:#efe7f4; border-radius:10px; margin:10px 0; }
+.focus-dashboard-progress > span { display:block; height:100%; background:#b19ac2; border-radius:10px; transition:width .5s; }
+.focus-dashboard-goal-meta { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; font-size:10px; color:#aa94b5; }
+.focus-dashboard-goal-meta > span { display:flex; align-items:center; gap:5px; }
+.focus-dashboard-goal p { font-size:10px; color:#8f779f; line-height:1.8; margin-top:13px; }
+.focus-dashboard-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; padding-left:25px; border-left:1px solid #ede5f1; }
+.focus-dashboard-metric > span { display:flex; align-items:center; gap:5px; font-size:9px; color:#a58caf; white-space:nowrap; }
+.focus-dashboard-metric > div { margin-top:9px; white-space:nowrap; }
+.focus-dashboard-metric strong { font-size:25px; font-weight:450; font-variant-numeric:tabular-nums; }
+.focus-dashboard-metric small { font-size:10px; color:#a88fb3; margin-left:5px; }
+.focus-dashboard-footer { display:flex; justify-content:space-between; align-items:center; gap:16px; border-top:1px solid #eee6f3; padding:13px 27px; background:#faf6fc; }
+.focus-dashboard-next { display:flex; align-items:center; gap:7px; font-size:10px; color:#987ca8; line-height:1.6; }
+.focus-dashboard-link { display:flex; align-items:center; gap:8px; color:#9773aa; font-size:10px; white-space:nowrap; }
+.focus-dashboard[data-complete="true"] .focus-dashboard-progress > span { background:#9bb7a8; }
+.focus-dashboard[data-complete="true"] .focus-dashboard-status { color:#7a9c87; border-color:#dce9e1; background:#f6fbf8; }
+.focus-dashboard[data-complete="true"] .focus-dashboard-status > span { background:#96b49f; }
+@media(max-width:900px) {
+  .focus-dashboard-content { grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr); gap:24px; }
+  .focus-dashboard-metrics { grid-column:1/-1; border-left:0; border-top:1px solid #eee5f2; padding:17px 0 0; }
+  .focus-dashboard-metric { display:flex; align-items:center; justify-content:space-between; }
+  .focus-dashboard-metric > div { margin-top:0; }
+  .focus-dashboard-metric strong { font-size:20px; }
+}
+@media(max-width:480px) {
+  .focus-dashboard { border-radius:20px; }
+  .focus-dashboard-header { padding:20px 19px 0; flex-wrap:wrap; gap:12px; }
+  .focus-dashboard-header h3 { font-size:18px; }
+  .focus-dashboard-status { padding:5px 7px; font-size:8px; }
+  .focus-dashboard-content { grid-template-columns:1fr; padding:22px 19px; gap:21px; }
+  .focus-dashboard-total strong { font-size:54px; }
+  .focus-dashboard-total p { display:none; }
+  .focus-dashboard-goal p { margin-top:11px; }
+  .focus-dashboard-metrics { gap:22px; }
+  .focus-dashboard-metric { display:block; }
+  .focus-dashboard-metric > div { margin-top:7px; }
+  .focus-dashboard-footer { padding:13px 19px; align-items:flex-start; }
+  .focus-dashboard-next { align-items:flex-start; font-size:9px; }
+  .focus-dashboard-next > svg { flex-shrink:0; margin-top:1px; }
+  .focus-dashboard-link { font-size:9px; padding-top:1px; }
+}
+@media(prefers-reduced-motion:reduce) { .focus-dashboard, .focus-dashboard-progress > span { transition:none; } }
+
+.focus-summary { display:block; width:100%; padding:17px 22px; border:1px solid #e7dfed; border-radius:18px; background:#fffefb; color:#695376; text-align:left; transition:border-color .2s; }
+.focus-summary:hover { border-color:#bba1ce; }
+.focus-summary:focus-visible { outline:3px solid #bda1d0; outline-offset:4px; }
+.focus-summary-heading, .focus-summary-heading > span { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:11px; }
+.focus-summary-heading > span:last-child { color:#8b759c; font-size:10px; }
+.focus-summary-value { display:flex; align-items:baseline; flex-wrap:wrap; gap:5px; margin-top:6px; font-size:11px; color:#8b759c; }
+.focus-summary-value > strong { color:#695376; font-size:27px; font-weight:600; line-height:1.2; font-variant-numeric:tabular-nums; }
+.focus-summary-streak { display:flex; align-items:center; gap:4px; margin-left:auto; font-size:10px; }
+.focus-summary .focus-dashboard-progress { display:block; height:5px; margin:9px 0 0; }
+.focus-summary[data-complete=true] .focus-dashboard-progress > span { background:#7fa58e; }
+@media(max-width:767px) { .focus-summary { padding:13px 16px; border-radius:16px; } }

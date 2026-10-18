@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import './ScheduleTimeline.css';
+import { EXAM_PRESETS } from '../constants';
 import {
   AlertCircle,
   BookOpen,
@@ -54,6 +56,7 @@ interface DaySchedule {
   weekday: string;
   weekdayZh: string;
   subjects: Subject[];
+  timeline?: { time: string; name: string; minutes: number; kind: 'exam' | 'instruction' | 'break' | 'lunch' }[];
 }
 
 interface ExamSchedule {
@@ -136,13 +139,27 @@ const SCHEDULE_DATA: Record<string, ExamSchedule> = {
     ]
   },
   '116cap': {
-    title: '116 會考日程 (預計)',
-    note: '考試說明時間為各科考前10分鐘。英語聽力測驗撥音後即不得入場。',
+    title: '116 會考日程',
+    note: '一般科目考試說明為 10 分鐘，英語聽力為 5 分鐘。英語聽力測驗撥音後即不得入場。科目時程為參考，實際安排以 116 年會考簡章為準。',
     examWindow: '116.05.15 - 05.16',
-    status: '預估日程',
+    registration: '116.03.04 - 03.06',
+    status: '考試日期已公告',
     days: [
       {
         date: '05.15', weekday: 'Saturday', weekdayZh: '週六',
+        timeline: [
+          { time: '08:20～08:30', name: '考試說明', minutes: 10, kind: 'instruction' },
+          { time: '08:30～09:40', name: '社會', minutes: 70, kind: 'exam' },
+          { time: '09:40～10:20', name: '休息', minutes: 40, kind: 'break' },
+          { time: '10:20～10:30', name: '考試說明', minutes: 10, kind: 'instruction' },
+          { time: '10:30～11:50', name: '數學', minutes: 80, kind: 'exam' },
+          { time: '11:50～13:40', name: '午休', minutes: 110, kind: 'lunch' },
+          { time: '13:40～13:50', name: '考試說明', minutes: 10, kind: 'instruction' },
+          { time: '13:50～15:00', name: '國文', minutes: 70, kind: 'exam' },
+          { time: '15:00～15:40', name: '休息', minutes: 40, kind: 'break' },
+          { time: '15:40～15:50', name: '考試說明', minutes: 10, kind: 'instruction' },
+          { time: '15:50～16:40', name: '寫作測驗', minutes: 50, kind: 'exam' },
+        ],
         subjects: [
           { time: '08:30 - 09:40', name: '社會', type: 'morning', duration: '70 分鐘' },
           { time: '10:30 - 11:50', name: '數學', type: 'morning', duration: '80 分鐘' },
@@ -152,10 +169,20 @@ const SCHEDULE_DATA: Record<string, ExamSchedule> = {
       },
       {
         date: '05.16', weekday: 'Sunday', weekdayZh: '週日',
+        timeline: [
+          { time: '08:20～08:30', name: '考試說明', minutes: 10, kind: 'instruction' },
+          { time: '08:30～09:40', name: '自然', minutes: 70, kind: 'exam' },
+          { time: '09:40～10:20', name: '休息', minutes: 40, kind: 'break' },
+          { time: '10:20～10:30', name: '考試說明', minutes: 10, kind: 'instruction' },
+          { time: '10:30～11:30', name: '英語（閱讀）', minutes: 60, kind: 'exam' },
+          { time: '11:30～12:00', name: '休息', minutes: 30, kind: 'break' },
+          { time: '12:00～12:05', name: '考試說明', minutes: 5, kind: 'instruction' },
+          { time: '12:05～12:30', name: '英語（聽力）', minutes: 25, kind: 'exam' },
+        ],
         subjects: [
           { time: '08:30 - 09:40', name: '自然', type: 'morning', duration: '70 分鐘' },
           { time: '10:30 - 11:30', name: '英語 (閱讀)', type: 'morning', duration: '60 分鐘' },
-          { time: '12:05 - 12:30', name: '英語 (聽力)', type: 'afternoon', duration: '25 分鐘' },
+          { time: '12:05 - 12:30', name: '英語 (聽力)', type: 'morning', duration: '25 分鐘' },
         ]
       }
     ]
@@ -237,14 +264,14 @@ const SCHEDULE_DATA: Record<string, ExamSchedule> = {
       }
     ]
   },
-  '115cap': {
-    title: '115 會考日程',
-    note: '考試說明時間為各科考前10分鐘。英語聽力測驗撥音後即不得入場。',
-    examWindow: '115.05.16 - 05.17',
-    status: '正式日程',
+  '117cap': {
+    title: '117 會考日程（預估）',
+    note: '日期暫以 2028 年 5 月第三個週末推估，各科時段沿用歷年安排供備考參考；正式日期與時段以國中教育會考公告為準。',
+    examWindow: '117.05.20 - 05.21（預估）',
+    status: '預估・待官方公告',
     days: [
       {
-        date: '05.16', weekday: 'Saturday', weekdayZh: '週六',
+        date: '05.20', weekday: 'Saturday', weekdayZh: '週六',
         subjects: [
           { time: '08:30 - 09:40', name: '社會', type: 'morning', duration: '70 分鐘' },
           { time: '10:30 - 11:50', name: '數學', type: 'morning', duration: '80 分鐘' },
@@ -253,7 +280,7 @@ const SCHEDULE_DATA: Record<string, ExamSchedule> = {
         ]
       },
       {
-        date: '05.17', weekday: 'Sunday', weekdayZh: '週日',
+        date: '05.21', weekday: 'Sunday', weekdayZh: '週日',
         subjects: [
           { time: '08:30 - 09:40', name: '自然', type: 'morning', duration: '70 分鐘' },
           { time: '10:30 - 11:30', name: '英語 (閱讀)', type: 'morning', duration: '60 分鐘' },
@@ -311,169 +338,46 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({ targetExam = '116gsat', t
   }, [scheduleInfo.days, tvetCategory]);
 
   const activeDay = days[activeIndex] || days[0];
-  const totalSubjects = days.reduce((sum, day) => sum + day.subjects.length, 0);
-  const activeDayMinutes = activeDay.subjects.reduce((sum, subject) => sum + parseMinutes(subject.duration), 0);
+
+  const isEstimated = Boolean(EXAM_PRESETS.find(exam => exam.id === targetExam)?.isEstimated) || /預估|預計/.test(scheduleInfo.title);
+  const title = scheduleInfo.title.replace(/\s*[（(](預估|預計)[）)]/, '');
+  const status = isEstimated ? '預估・待官方公告' : scheduleInfo.status === '大考中心暫定' ? '' : scheduleInfo.status;
 
   return (
-    <div className="w-full h-full min-h-0 flex flex-col bg-white/90 backdrop-blur-2xl rounded-[2rem] overflow-hidden border border-white/80 shadow-2xl shadow-indigo-100/60 relative">
-      <div className="px-4 md:px-5 py-4 border-b border-slate-100/70 bg-gradient-to-r from-indigo-50/80 to-sky-50/60">
-        <div className="flex flex-col gap-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-2xl bg-white text-indigo-700 border border-indigo-100 shadow-sm flex items-center justify-center flex-shrink-0">
-                <CalendarRange className="w-5 h-5" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                  <h3 className="text-base md:text-lg font-black text-slate-900 tracking-tight">{scheduleInfo.title}</h3>
-                  <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-black">
-                    {scheduleInfo.status || '考程'}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/80 border border-white/80 text-xs text-slate-600 font-bold flex-shrink-0 shadow-sm">
-              <MapPin className="w-3.5 h-3.5 text-slate-400" />
-              考場待定
-            </div>
-          </div>
+    <div className="exam-plan">
+      <header className="exam-plan-header">
+        <div className="exam-plan-eyebrow"><span><CalendarRange size={13} aria-hidden="true" /> EXAM SCHEDULE</span>{status && <span className="exam-plan-status" data-estimated={isEstimated}>{isEstimated && <Clock size={10} aria-hidden="true" />}{status}</span>}</div>
+        <h3>{title}</h3>
+        <div className="exam-plan-meta"><span>{scheduleInfo.examWindow || '考試日期請參考下方日程'}</span><span><MapPin size={11} aria-hidden="true" />考場依准考證公告</span></div>
+      </header>
 
-          <div className="grid grid-cols-3 gap-2">
-            <Metric label="考試天數" value={`${days.length} 天`} />
-            <Metric label="考科時段" value={`${totalSubjects} 場`} />
-            <Metric label="本日總長" value={`${activeDayMinutes} 分`} />
-          </div>
-        </div>
+      <div className="exam-plan-days" role="group" aria-label="選擇考試日期" style={{ gridTemplateColumns: `repeat(${Math.max(days.length, 1)}, minmax(0, 1fr))` }}>
+        {days.map((day, index) => <button type="button" key={`${day.date}-${index}`} onClick={() => setActiveIndex(index)} aria-pressed={index === activeIndex} data-active={index === activeIndex} className="schedule-day-button"><span className="exam-plan-day-label">DAY {String(index + 1).padStart(2, '0')}</span><span className="exam-plan-day-date"><strong>{day.date}</strong><small>{day.weekdayZh}</small></span><span className="exam-plan-day-line" /></button>)}
       </div>
 
-      <div className="px-4 md:px-5 pt-3 pb-2 bg-white/70 border-b border-slate-100">
-        <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.max(days.length, 1)}, minmax(0, 1fr))` }}>
-          {days.map((day, index) => {
-            const isActive = index === activeIndex;
-            const minutes = day.subjects.reduce((sum, subject) => sum + parseMinutes(subject.duration), 0);
-            return (
-              <button
-                key={`${day.date}-${index}`}
-                onClick={() => setActiveIndex(index)}
-                className={`relative rounded-2xl border p-2.5 text-left transition-all ${
-                  isActive
-                    ? 'bg-indigo-50 text-indigo-800 border-indigo-200 shadow-md shadow-indigo-100/70'
-                    : 'bg-white/80 text-slate-600 border-slate-100 hover:border-indigo-200 hover:text-slate-900 hover:bg-white'
-                }`}
-              >
-                {isActive && (
-                  <motion.div
-                    layoutId="activeScheduleDay"
-                    className="absolute inset-0 rounded-2xl border border-indigo-200"
-                    transition={{ type: 'spring', bounce: 0.18, duration: 0.5 }}
-                  />
-                )}
-                <div className="relative z-10">
-                  <div className={`text-[10px] font-black ${isActive ? 'text-indigo-500' : 'text-slate-400'}`}>DAY {index + 1}</div>
-                  <div className="mt-0.5 flex items-baseline justify-between gap-2">
-                    <span className="text-sm md:text-base font-black font-mono">{day.date}</span>
-                    <span className={`text-[11px] font-bold ${isActive ? 'text-indigo-500' : 'text-slate-500'}`}>{day.weekdayZh}</span>
-                  </div>
-                  <div className={`mt-1.5 text-[10px] font-bold ${isActive ? 'text-indigo-500' : 'text-slate-400'}`}>
-                    {day.subjects.length} 場 · {minutes} 分
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+      <div className="exam-plan-body">
+        <div className="exam-plan-list-heading"><span>當日考程</span><small>{isEstimated ? '預估時段・供備考參考' : '時段以當年度簡章為準'}</small></div>
+        {activeDay.timeline ? <table className="cap-day-timeline">
+          <caption>第{activeIndex === 0 ? '一' : '二'}天｜{activeDay.date.replace('05.', '5月')}日（{activeDay.weekdayZh.replace('週', '')}）</caption>
+          <thead><tr><th scope="col">時間</th><th scope="col">考試安排</th></tr></thead>
+          <tbody>{activeDay.timeline.map(item => <tr key={item.time} data-kind={item.kind}><td>{item.time}</td><td><span>{item.name}</span><small>{item.minutes} 分鐘</small></td></tr>)}</tbody>
+        </table> : <ol className="exam-plan-subjects" aria-label={`${activeDay.date}考科與時間`}>
+          {activeDay.subjects.map((subject, index) => <li key={`${subject.time}-${subject.name}`} className="exam-plan-subject">
+            <div className="exam-plan-time"><span>{subject.type === 'morning' ? '上午' : '下午'}</span><strong>{subject.time}</strong></div>
+            <span className="exam-plan-subject-icon" aria-hidden="true">{getSubjectIcon(subject.name)}</span>
+            <div className="exam-plan-subject-copy"><div><h4>{subject.name}</h4><span>{subject.duration}</span></div>{subject.note && <p>{subject.note}</p>}</div>
+            <small className="exam-plan-sequence">{String(index + 1).padStart(2, '0')}</small>
+          </li>)}
+          {activeDay.subjects.length === 0 && <li className="exam-plan-empty">目前群別沒有安排考科，請切換日期查看。</li>}
+        </ol>}
       </div>
 
-      <div className="flex-grow min-h-0 overflow-y-auto custom-scrollbar px-4 md:px-5 py-3 bg-white/70">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={`${targetExam}-${tvetCategory || 'all'}-${activeIndex}`}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.25 }}
-            className="relative"
-          >
-            <div className="absolute left-[18px] top-4 bottom-4 w-px bg-slate-200" />
-            <div className="space-y-2.5">
-              {activeDay.subjects.map((subject, index) => {
-                const style = getSubjectStyle(subject.name);
-                return (
-                  <motion.div
-                    key={`${subject.time}-${subject.name}`}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.04 }}
-                    className="relative pl-12"
-                  >
-                    <div className={`absolute left-0 top-4 w-9 h-9 rounded-2xl ${style.bg} ${style.text} ${style.ring} border flex items-center justify-center z-10 shadow-sm`}>
-                      {getSubjectIcon(subject.name)}
-                    </div>
-                    <div className="rounded-[1.25rem] border border-slate-100 bg-white p-3 shadow-sm hover:border-indigo-100 hover:shadow-md transition-all">
-                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className={`w-1.5 h-6 rounded-full ${style.line}`} />
-                            <h4 className="text-base font-black text-slate-900 truncate">{subject.name}</h4>
-                          </div>
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
-                            <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-50 border border-slate-200 px-2.5 py-1">
-                              <Clock className="w-3.5 h-3.5 text-slate-400" />
-                              {subject.time}
-                            </span>
-                            <span className="rounded-md bg-slate-50 border border-slate-200 px-2.5 py-1">{subject.duration}</span>
-                            <span className={`rounded-md px-2.5 py-1 border ${subject.type === 'morning' ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-indigo-50 text-indigo-700 border-indigo-100'}`}>
-                              {subject.type === 'morning' ? '上午場' : '下午場'}
-                            </span>
-                          </div>
-                          {subject.note && (
-                            <p className="mt-2 text-xs leading-relaxed text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                              {subject.note}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1.5 text-xs font-black text-slate-400 sm:pt-1">
-                          <span className="font-mono">{String(index + 1).padStart(2, '0')}</span>
-                          <span>/</span>
-                          <span className="font-mono">{String(activeDay.subjects.length).padStart(2, '0')}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          </motion.div>
-        </AnimatePresence>
-      </div>
-
-      <div className="px-4 md:px-5 py-3 bg-amber-50/80 border-t border-amber-100/80">
-        <div className="flex items-start gap-3 text-xs text-amber-900 leading-relaxed">
-          <div className="w-7 h-7 rounded-xl bg-white border border-amber-100 text-amber-600 flex items-center justify-center flex-shrink-0">
-            <AlertCircle className="w-4 h-4" />
-          </div>
-          <p className="flex-1">
-            <span className="font-black">考試須知：</span>
-            {scheduleInfo.note}
-            {scheduleInfo.source && <span className="hidden sm:block mt-1 text-amber-700/80">資料來源：{scheduleInfo.source}</span>}
-          </p>
-          <ShieldCheck className="hidden sm:block w-4 h-4 text-amber-600 mt-1 flex-shrink-0" />
-        </div>
-      </div>
+      <footer className="exam-plan-footer">
+        <div className="exam-plan-footer-note"><AlertCircle size={14} aria-hidden="true" /><span>{isEstimated ? '日期與科目時段均為預估，請以正式公告為準。' : '請留意入場規定，並攜帶准考證與有效證件。'}</span></div>
+        <details className="exam-plan-details"><summary>查看考試須知</summary><p>{scheduleInfo.note}</p>{scheduleInfo.source && <small>資料來源：{scheduleInfo.source}</small>}</details>
+      </footer>
     </div>
   );
 };
-
-interface MetricProps {
-  label: string;
-  value: string;
-}
-
-const Metric: React.FC<MetricProps> = ({ label, value }) => (
-  <div className="rounded-2xl bg-white/80 border border-white/80 px-3 py-1.5 shadow-sm">
-    <div className="text-[10px] font-black text-slate-400">{label}</div>
-    <div className="mt-0.5 text-sm font-black text-slate-900">{value}</div>
-  </div>
-);
 
 export default ScheduleTable;

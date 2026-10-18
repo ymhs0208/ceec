@@ -1,14 +1,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Mail, Lock, User as UserIcon, Loader2, AlertCircle, CheckCircle2, Calendar, LogOut, KeyRound, ShieldQuestion, ChevronRight, ChevronLeft, Send, Eye, EyeOff, MonitorSmartphone, Trash2, MapPin, Sparkles, Settings } from 'lucide-react';
+import { X, Mail, Lock, User as UserIcon, Loader2, AlertCircle, CheckCircle2, Calendar, LogOut, KeyRound, ShieldQuestion, ChevronRight, ChevronLeft, Send, Eye, EyeOff, MonitorSmartphone, Trash2, MapPin, Sparkles, Settings, Cloud } from 'lucide-react';
 import { authService } from '../services/authService';
 import { AppData, User } from '../types';
 import TeamSelectModal from './TeamSelectModal';
 import ExamSelectModal from './ExamSelectModal';
 import { EXAM_PRESETS } from '../constants';
+import './AuthPage.css';
 
-interface AuthModalProps {
+interface AuthPageProps {
   isOpen: boolean;
   onClose: () => void;
   onLoginSuccess: (user: User, data?: AppData, encryptionKey?: string) => void;
@@ -23,7 +24,7 @@ interface AuthModalProps {
   onShowTerms?: () => void;
 }
 
-type AuthMode = 'login' | 'signup' | 'forgot' | 'reset' | 'profile' | 'change-password' | 'devices';
+type AuthMode = 'login' | 'signup' | 'onboarding' | 'forgot' | 'reset' | 'profile' | 'change-password' | 'devices';
 type LoadingAction = 'password' | 'otp-send' | 'otp-verify' | 'passkey' | 'passkey-register' | null;
 const MIN_PASSWORD_LENGTH = 8;
 const MAX_PASSWORD_LENGTH = 128;
@@ -98,7 +99,7 @@ const PasswordStrengthMeter: React.FC<{ password: string }> = ({ password }) => 
   );
 };
 
-const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, onLogout, currentData, currentUser, initialMode, initialEmail, initialResetCode, onShowPrivacy, onShowInstructions, onShowTerms }) => {
+const AuthPage: React.FC<AuthPageProps> = ({ isOpen, onClose, onLoginSuccess, onLogout, currentData, currentUser, initialMode, initialEmail, initialResetCode, onShowPrivacy, onShowInstructions, onShowTerms }) => {
   const [mode, setMode] = useState<AuthMode>(initialMode || 'login');
   
   // Form States
@@ -134,13 +135,12 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
   const [loadingAction, setLoadingAction] = useState<LoadingAction>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [pendingSignup, setPendingSignup] = useState<{ user: User; email: string; encryptionKey: string } | null>(null);
 
   // Set initial mode based on auth state
   useEffect(() => {
     if (isOpen) {
-      if (currentUser) {
-        setMode('profile');
-      } else if (initialMode) {
+      if (initialMode) {
         setMode(initialMode);
       } else {
         setMode('login');
@@ -167,6 +167,25 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
       }
     }
   }, [isOpen, currentUser, initialMode, initialEmail, initialResetCode]);
+
+  useEffect(() => {
+    const publicModes = ['login', 'signup', 'forgot', 'reset'];
+    if (!isOpen || !publicModes.includes(mode)) return;
+
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('code') || url.searchParams.get('reset') === 'true') return;
+    const parts = url.pathname.split('/').filter(Boolean);
+    const authIndex = parts.lastIndexOf('auth');
+    if (authIndex < 0) return;
+    parts.splice(authIndex + 1);
+    parts.push(mode);
+    url.pathname = `/${parts.join('/')}`;
+    url.searchParams.delete('authMode');
+    const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+    if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== nextUrl) {
+      window.history.replaceState(window.history.state, document.title, nextUrl);
+    }
+  }, [isOpen, mode]);
 
   if (!isOpen) return null;
 
@@ -214,8 +233,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
         await onLogout();
         onClose();
       } else {
-        setMessage('該裝置已登出，最晚會在 30 秒內停止存取帳號');
-        fetchSessions();
+        setMessage(res.message || '該裝置的登入已撤銷');
+        await fetchSessions();
       }
     } else {
       setLoading(false);
@@ -229,8 +248,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
     const res = await authService.removeAllSessions(currentUser.email, '', true);
     if (res.success) {
       setConfirmDeviceLogout(null);
-      setMessage('其他裝置的登入狀態已撤銷');
-      fetchSessions();
+      setMessage(res.message || '其他裝置的登入狀態已撤銷');
+      await fetchSessions();
     } else {
       setLoading(false);
       setError(res.message || '登出失敗');
@@ -266,7 +285,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
     setLoadingAction(null);
 
     if (res.success && res.user) {
-      sessionStorage.setItem('gsat_welcome_type', 'login');
+      if (res.user.needsOnboarding && res.encryptionKey) {
+        setPendingSignup({ user: res.user, email: cleanEmail, encryptionKey: res.encryptionKey });
+        setMode('onboarding');
+        return;
+      }
       onLoginSuccess(res.user, res.data, res.encryptionKey);
       onClose();
     } else {
@@ -328,7 +351,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
     setLoadingAction(null);
 
     if (res.success && res.user) {
-      sessionStorage.setItem('gsat_welcome_type', 'login');
       onLoginSuccess(res.user, res.data, res.encryptionKey);
       onClose();
     } else {
@@ -346,7 +368,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
     setLoadingAction(null);
 
     if (res.success && res.user) {
-      sessionStorage.setItem('gsat_welcome_type', 'login');
       onLoginSuccess(res.user, res.data, res.encryptionKey);
       onClose();
     } else {
@@ -389,23 +410,23 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
       setError(passwordError);
       return;
     }
-    if (!selectedTeam) {
+    if (false && !selectedTeam) {
       setError("請選擇您要加入的戰隊");
       return;
     }
     if (!isAgreed) {
-      setError("請勾選同意隱私權條款與使用規範");
+      setError("請閱讀並勾選同意服務條款，確認已了解隱私權政策");
       return;
     }
-    if (!name.trim()) {
+    if (false && !name.trim()) {
       setError("請輸入暱稱");
       return;
     }
-    if (name.trim().length > 20) {
+    if (false && name.trim().length > 20) {
       setError("暱稱過長，請限制在 20 字以內");
       return;
     }
-    if (hasStrangeChars(name) || hasStrangeChars(email)) {
+    if (hasStrangeChars(email)) {
       setError("輸入內容包含無效字元");
       return;
     }
@@ -413,12 +434,12 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
 
     const cleanEmail = normalizeEmail(email);
     setEmail(cleanEmail);
-    const res = await authService.signup(cleanEmail, password, name.trim(), examType, selectedTeam);
+    const res = await authService.signup(cleanEmail, password, '');
     
     if (res.success) {
       const loginRes = await authService.login(cleanEmail, password);
       
-      if (loginRes.success && loginRes.user && loginRes.encryptionKey) {
+       if (false && loginRes.success && loginRes.user && loginRes.encryptionKey) {
          const selectedPreset = EXAM_PRESETS.find(p => p.id === examType);
          const dataToSync = { 
             ...currentData, 
@@ -435,13 +456,53 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
             return;
          }
       }
-      setLoading(false);
-      setMessage('註冊成功！請嘗試登入');
+       if (loginRes.success && loginRes.user && loginRes.encryptionKey) {
+          setPendingSignup({ user: loginRes.user, email: cleanEmail, encryptionKey: loginRes.encryptionKey });
+          setLoading(false);
+          setMode('onboarding');
+          return;
+       }
+       setLoading(false);
+      setMessage('帳號已建立，請依信箱驗證要求完成驗證後登入。');
       setMode('login');
     } else {
       setLoading(false);
       setError(res.message || '註冊失敗');
     }
+  };
+
+  const handleCompleteOnboarding = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!pendingSignup) {
+      setMode('login');
+      return;
+    }
+    if (!name.trim() || name.trim().length > 20 || hasStrangeChars(name)) {
+      setError('請輸入最多 20 個字元的暱稱');
+      return;
+    }
+    if (!selectedTeam) {
+      setError('請選擇就讀學校');
+      return;
+    }
+    setLoading(true);
+    const profileRes = await authService.completeOnboarding({ name: name.trim(), examType, team: selectedTeam });
+    if (!profileRes.success) {
+      setLoading(false);
+      setError(profileRes.message || '儲存個人資料失敗');
+      return;
+    }
+    const selectedPreset = EXAM_PRESETS.find(p => p.id === examType);
+    const dataToSync = { ...currentData, team: selectedTeam, targetExam: examType, targetDateStr: selectedPreset ? selectedPreset.date : currentData.targetDateStr };
+    const syncRes = await authService.syncData(pendingSignup.email, '', dataToSync, pendingSignup.encryptionKey);
+    setLoading(false);
+    if (!syncRes.success) {
+      setError(syncRes.message || '同步個人資料失敗');
+      return;
+    }
+    onLoginSuccess(profileRes.user || pendingSignup.user, dataToSync, pendingSignup.encryptionKey);
+    onClose();
   };
 
   // Forgot Password: Supabase only supports email-based password reset here.
@@ -542,31 +603,33 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
 
   const renderHeader = () => {
     switch (mode) {
-      case 'login': return '歡迎回來';
+      case 'login': return oneTimeStep === 2 ? '查看登入信' : '歡迎回來';
       case 'signup': return '建立帳號';
       case 'forgot': return forgotStep === 1 ? '忘記密碼' : '檢查您的信箱';
       case 'reset': return '重設密碼';
       case 'profile': return '帳號管理';
       case 'change-password': return '修改密碼';
       case 'devices': return '裝置管理';
+      case 'onboarding': return '完成個人資料';
       default: return '';
     }
   };
 
   const renderSubHeader = () => {
     switch (mode) {
-      case 'login': return '登入以同步您的讀書紀錄與設定';
-      case 'signup': return '加入我們，開始紀錄您的奮鬥歷程';
-      case 'forgot': return forgotStep === 1 ? '輸入 Email 以接收重設連結' : '請開啟信件中的連結重設密碼';
+      case 'login': return oneTimeStep === 2 ? '開啟信件連結，或輸入一次性驗證碼。' : '登入帳號，延續你的學習進度。';
+      case 'signup': return '建立帳號，讓每一段專注都有紀錄。';
+      case 'forgot': return forgotStep === 1 ? '輸入帳號信箱，接收密碼重設連結。' : '請開啟信件中的連結，設定新的密碼。';
       case 'reset': return '設定新密碼';
       case 'profile': return '查看您的帳號資訊';
       case 'change-password': return '定期更換密碼以保護帳號安全';
       case 'devices': return '管理您目前已登入的裝置';
+      case 'onboarding': return '讓我們為你準備專屬的學習空間';
       default: return '';
     }
   };
 
-  const isPublicAuthMode = ['login', 'signup', 'forgot', 'reset'].includes(mode);
+  const isPublicAuthMode = ['login', 'signup', 'onboarding', 'forgot', 'reset'].includes(mode);
   const isLoginMode = mode === 'login';
   const publicAuthIntro = {
     login: {
@@ -579,14 +642,21 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
     signup: {
       eyebrow: 'Join Focus Space',
       title: <>建立你的<br />讀書帳號</>,
-      body: '註冊後會同步你的大考目標、學校戰隊與讀書紀錄。',
+      body: '從一個小目標開始，整理你的任務、讀書紀錄與備考日常。',
       cardTitle: '學習資料',
-      cardBody: '註冊後自動建立雲端備份',
+      cardBody: '登入後同步紀錄，重要資料仍請另行保存。',
+    },
+    onboarding: {
+      eyebrow: 'Your Focus Profile',
+      title: <>設定你的<br />學習起點</>,
+      body: '用幾項簡單資料，建立適合你目標的 Focus Space 學習體驗。',
+      cardTitle: '資料隨時可調整',
+      cardBody: '完成後可隨時在帳號管理中更新設定。',
     },
     forgot: {
       eyebrow: 'Account Recovery',
       title: <>找回你的<br />登入權限</>,
-      body: '輸入 Email 後，我們會寄出安全的密碼重設連結。',
+      body: '透過帳號信箱重新設定密碼，回到你的學習空間。',
       cardTitle: '安全重設',
       cardBody: '透過信箱驗證帳號身分',
     },
@@ -602,79 +672,23 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
 
   return (
     <>
-    <div className="fixed inset-0 z-[65000] flex items-center justify-center p-3 bg-slate-950/55 backdrop-blur-md animate-fade-in sm:p-4">
-      <div className={`bg-white w-full shadow-2xl relative border border-white/60 max-h-[95vh] overflow-hidden animate-scale-in ${
-        isPublicAuthMode
-          ? 'max-w-4xl rounded-[2rem] grid md:grid-cols-[0.92fr_1.08fr]'
-          : 'max-w-md rounded-[2.5rem] overflow-y-auto overflow-x-hidden custom-scrollbar'
-      }`}>
-        
-        {/* Decorative Top Background for Auth Modes */}
-        {false && (
-          <div className="absolute top-0 left-0 w-full h-40 bg-gradient-to-b from-indigo-50/80 to-transparent -z-10 pointer-events-none">
-            <div className="absolute -top-12 -right-12 w-48 h-48 bg-indigo-200/40 rounded-full blur-2xl"></div>
-            <div className="absolute -top-12 -left-12 w-48 h-48 bg-purple-200/40 rounded-full blur-2xl"></div>
-          </div>
-        )}
-
-        <button onClick={onClose} className={`absolute top-5 right-5 w-9 h-9 flex items-center justify-center rounded-full transition-colors z-20 backdrop-blur-sm ${
-          isPublicAuthMode
-            ? 'bg-white/90 hover:bg-white text-slate-500 hover:text-slate-900 shadow-sm border border-white/70'
-            : 'bg-slate-100/80 hover:bg-slate-200 text-slate-500 hover:text-slate-700'
-        }`}>
-          <X className="w-4 h-4" />
+    <main id="main-content" className={`auth-page auth-view-${mode}`}>
+      <header className="auth-page-header" aria-label="Focus Space 導覽">
+        <button type="button" onClick={onClose} className="auth-brand" aria-label="返回首頁">
+          <img src="/apple-touch-icon.png" alt="" width="36" height="36" /><span><strong>大考倒數</strong><small>FOCUS SPACE</small></span>
         </button>
-
-        {isPublicAuthMode && currentPublicIntro && (
-          <aside className="hidden min-h-[560px] flex-col justify-between gap-8 bg-slate-950 p-8 text-white md:flex">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">
-                <Sparkles className="h-3.5 w-3.5 text-amber-300" />
-                {currentPublicIntro.eyebrow}
-              </div>
-              <div className="mt-8">
-                <h2 className="text-4xl font-black leading-tight tracking-tight">
-                  {currentPublicIntro.title}
-                </h2>
-                <p className="mt-4 max-w-xs text-sm font-semibold leading-7 text-slate-300">
-                  {currentPublicIntro.body}
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-4">
-                <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cloud Sync</div>
-                <div className="mt-2 flex items-start gap-3">
-                  <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-300" />
-                  <div className="min-w-0">
-                    <div className="text-base font-black leading-tight">{currentPublicIntro.cardTitle}</div>
-                    <div className="mt-1 text-xs font-semibold leading-relaxed text-slate-400">{currentPublicIntro.cardBody}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </aside>
-        )}
-
-        <div className={`${isPublicAuthMode ? 'max-h-[95vh] overflow-y-auto px-6 pb-7 pt-8 custom-scrollbar sm:px-8 md:px-9 md:pb-9 md:pt-10' : 'px-8 pt-10 pb-8'}`}>
-            {isPublicAuthMode ? (
-                <div className="relative z-10 mb-6 flex items-center gap-4">
-                    <div className="flex h-12 w-12 flex-shrink-0 bg-slate-950 text-white rounded-2xl items-center justify-center shadow-lg shadow-slate-200">
-                       {mode === 'login' ? <UserIcon className="w-6 h-6" /> : mode === 'signup' ? <Sparkles className="w-6 h-6" /> : mode === 'forgot' ? <ShieldQuestion className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
-                    </div>
-                    <div className="min-w-0">
-                      <h2 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight leading-tight">{renderHeader()}</h2>
-                      <p className="text-slate-500 text-sm mt-1 font-semibold leading-relaxed">{renderSubHeader()}</p>
-                    </div>
-                </div>
-            ) : (
-                <div className="mb-6 relative z-10 pt-2">
-                    <h2 className="text-2xl font-black text-slate-800">{renderHeader()}</h2>
-                    <p className="text-slate-500 text-xs mt-1 font-medium">{renderSubHeader()}</p>
-                </div>
-            )}
-
+        <button type="button" onClick={onClose} className="auth-home"><ChevronLeft size={14} />返回首頁</button>
+      </header>
+      <div className={`auth-layout ${isPublicAuthMode ? '' : 'auth-layout-private'}`}>
+        {isPublicAuthMode && currentPublicIntro && <aside className="auth-story" aria-label="你的學習空間">
+          <div><p className="auth-eyebrow"><Sparkles size={13} />{currentPublicIntro.eyebrow}</p><h2>{currentPublicIntro.title}<span>。</span></h2><p className="auth-story-intro">{currentPublicIntro.body}</p></div>
+          <div className="auth-illustration" aria-hidden="true"><div className="auth-orbit" /><div className="auth-paper"><div className="auth-paper-head"><span /><span /><span /><small>MY FOCUS JOURNAL</small></div><div className="auth-paper-title">每一天，都更靠近。</div><div className="auth-paper-date">ONE STEP AT A TIME</div><div className="auth-paper-line"><CheckCircle2 size={15} /><span>整理今天的讀書計畫</span></div><div className="auth-paper-line"><CheckCircle2 size={15} /><span>留下一段專注的紀錄</span></div><div className="auth-paper-line auth-paper-pending"><span className="auth-paper-dot" /><span>為下一個小目標努力</span></div><div className="auth-paper-progress"><span /></div><p>Keep going. You’ve got this.</p></div><div className="auth-float"><Cloud size={18} /><span>把努力，慢慢累積。</span></div><Sparkles className="auth-art-spark" size={23} /></div>
+          <div className="auth-story-note"><span><Cloud size={18} strokeWidth={1.5} /></span><div><h3>{currentPublicIntro.cardTitle}</h3><p>{currentPublicIntro.cardBody}</p></div></div>
+          <p className="auth-story-caption">A LITTLE FOCUS, EVERY DAY.</p>
+        </aside>}
+        <section className="auth-panel" aria-labelledby="auth-title" aria-busy={loading}>
+          {((isLoginMode && oneTimeStep === 1) || mode === 'signup') ? <nav className="auth-mode-tabs" aria-label="帳號入口"><button type="button" disabled={loading} aria-current={mode === 'login' ? 'page' : undefined} onClick={() => { resetForm(); setMode('login'); }}>登入</button><button type="button" disabled={loading} aria-current={mode === 'signup' ? 'page' : undefined} onClick={() => { resetForm(); setMode('signup'); }}>註冊</button></nav> : <p className="auth-panel-eyebrow">{mode === 'onboarding' ? 'YOUR PROFILE' : mode === 'forgot' || mode === 'reset' ? 'ACCOUNT RECOVERY' : 'YOUR ACCOUNT'}</p>}
+          <div className="auth-panel-heading"><span className="auth-heading-icon">{mode === 'login' ? <UserIcon size={21} /> : mode === 'signup' || mode === 'onboarding' ? <Sparkles size={21} /> : <Lock size={21} />}</span><div><h1 id="auth-title">{renderHeader()}</h1><p>{renderSubHeader()}</p></div></div>
         {error && (
           <div role="alert" aria-live="assertive" className="mb-5 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-600 text-sm font-medium animate-shake">
             <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
@@ -946,25 +960,25 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
         {mode === 'change-password' && (
            <form onSubmit={handleChangePassword} className="space-y-5">
               <div className="space-y-1.5">
-                 <label className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">舊密碼</label>
+                 <label htmlFor={`auth-${mode}-oldPassword`} className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">舊密碼</label>
                  <div className="relative group">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                    <input type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} required maxLength={MAX_PASSWORD_LENGTH} autoComplete="current-password" className="w-full bg-slate-50/50 border-2 border-slate-100 hover:border-slate-200 focus:border-indigo-500 focus:bg-white rounded-[1rem] py-3.5 pl-12 pr-4 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 placeholder-slate-400" placeholder="輸入舊密碼" />
+                    <input type="password" id={`auth-${mode}-oldPassword`} value={oldPassword} onChange={e => setOldPassword(e.target.value)} required maxLength={MAX_PASSWORD_LENGTH} autoComplete="current-password" className="w-full bg-slate-50/50 border-2 border-slate-100 hover:border-slate-200 focus:border-indigo-500 focus:bg-white rounded-[1rem] py-3.5 pl-12 pr-4 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 placeholder-slate-400" placeholder="輸入舊密碼" />
                  </div>
               </div>
               <div className="space-y-1.5">
-                 <label className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">新密碼</label>
+                 <label htmlFor={`auth-${mode}-newPassword`} className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">新密碼</label>
                  <div className="relative group">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                    <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required minLength={MIN_PASSWORD_LENGTH} maxLength={MAX_PASSWORD_LENGTH} autoComplete="new-password" className="w-full bg-slate-50/50 border-2 border-slate-100 hover:border-slate-200 focus:border-indigo-500 focus:bg-white rounded-[1rem] py-3.5 pl-12 pr-4 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 placeholder-slate-400" placeholder="輸入新密碼" />
+                    <input type="password" id={`auth-${mode}-newPassword`} value={newPassword} onChange={e => setNewPassword(e.target.value)} required minLength={MIN_PASSWORD_LENGTH} maxLength={MAX_PASSWORD_LENGTH} autoComplete="new-password" className="w-full bg-slate-50/50 border-2 border-slate-100 hover:border-slate-200 focus:border-indigo-500 focus:bg-white rounded-[1rem] py-3.5 pl-12 pr-4 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 placeholder-slate-400" placeholder="輸入新密碼" />
                  </div>
                  <PasswordStrengthMeter password={newPassword} />
               </div>
               <div className="space-y-1.5">
-                 <label className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">確認新密碼</label>
+                 <label htmlFor={`auth-${mode}-confirmPassword`} className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">確認新密碼</label>
                  <div className="relative group">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                    <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required minLength={MIN_PASSWORD_LENGTH} maxLength={MAX_PASSWORD_LENGTH} autoComplete="new-password" className="w-full bg-slate-50/50 border-2 border-slate-100 hover:border-slate-200 focus:border-indigo-500 focus:bg-white rounded-[1rem] py-3.5 pl-12 pr-4 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 placeholder-slate-400" placeholder="再次輸入新密碼" />
+                    <input type="password" id={`auth-${mode}-confirmPassword`} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required minLength={MIN_PASSWORD_LENGTH} maxLength={MAX_PASSWORD_LENGTH} autoComplete="new-password" className="w-full bg-slate-50/50 border-2 border-slate-100 hover:border-slate-200 focus:border-indigo-500 focus:bg-white rounded-[1rem] py-3.5 pl-12 pr-4 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 placeholder-slate-400" placeholder="再次輸入新密碼" />
                  </div>
               </div>
 
@@ -982,30 +996,30 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
 
         {/* Signup Form */}
         {mode === 'signup' && (
-           <form onSubmit={handleSignup} className="space-y-4">
-             <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">暱稱 Username</label>
+           <form onSubmit={handleSignup} noValidate className="space-y-4">
+              <div className="hidden">
+                <label htmlFor={`auth-${mode}-name`} className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">暱稱 Username</label>
                 <div className="relative group">
                   <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                  <input type="text" value={name} onChange={e => setName(e.target.value)} required maxLength={20} autoComplete="nickname" className="w-full bg-slate-50/50 border-2 border-slate-100 hover:border-slate-200 focus:border-indigo-500 focus:bg-white rounded-[1rem] py-3.5 pl-12 pr-4 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 placeholder-slate-400" placeholder="您的稱呼 (限20字)" />
+                  <input type="text" id={`auth-${mode}-name`} value={name} onChange={e => setName(e.target.value)} maxLength={20} autoComplete="nickname" className="w-full bg-slate-50/50 border-2 border-slate-100 hover:border-slate-200 focus:border-indigo-500 focus:bg-white rounded-[1rem] py-3.5 pl-12 pr-4 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 placeholder-slate-400" placeholder="您的稱呼 (限20字)" />
                 </div>
              </div>
              
              <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">Email 電子信箱</label>
+                <label htmlFor={`auth-${mode}-email`} className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">Email 電子信箱</label>
                 <div className="relative group">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} required maxLength={254} autoComplete="email" inputMode="email" className="w-full bg-slate-50/50 border-2 border-slate-100 hover:border-slate-200 focus:border-indigo-500 focus:bg-white rounded-[1rem] py-3.5 pl-12 pr-4 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 placeholder-slate-400" placeholder="example@mail.com" />
+                  <input type="email" id={`auth-${mode}-email`} value={email} onChange={e => setEmail(e.target.value)} required maxLength={254} autoComplete="email" inputMode="email" className="w-full bg-slate-50/50 border-2 border-slate-100 hover:border-slate-200 focus:border-indigo-500 focus:bg-white rounded-[1rem] py-3.5 pl-12 pr-4 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 placeholder-slate-400" placeholder="example@mail.com" />
                 </div>
              </div>
 
              <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">設定密碼</label>
+                <label htmlFor={`auth-${mode}-password`} className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">設定密碼</label>
                 <div className="relative group">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                   <input 
                     type={showPassword ? "text" : "password"} 
-                    value={password} 
+                    id={`auth-${mode}-password`} value={password}
                     onChange={e => setPassword(e.target.value)} 
                     required 
                     minLength={MIN_PASSWORD_LENGTH}
@@ -1018,7 +1032,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
                     type="button" 
                     onClick={() => setShowPassword(!showPassword)} 
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                    tabIndex={-1}
+                    aria-label={showPassword ? "隱藏密碼" : "顯示密碼"} aria-pressed={showPassword}
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
@@ -1027,12 +1041,12 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
              </div>
 
              <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">確認密碼</label>
+                <label htmlFor={`auth-${mode}-confirmPassword`} className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">確認密碼</label>
                 <div className="relative group">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                   <input 
                     type={showPassword ? "text" : "password"} 
-                    value={confirmPassword} 
+                    id={`auth-${mode}-confirmPassword`} value={confirmPassword}
                     onChange={e => setConfirmPassword(e.target.value)} 
                     required 
                     minLength={MIN_PASSWORD_LENGTH}
@@ -1044,7 +1058,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
                 </div>
              </div>
 
-             <div className="grid grid-cols-2 gap-4 pt-1">
+              <div className="hidden">
                  <div className="space-y-1.5">
                     <label className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">大考類別</label>
                     <div onClick={() => setShowExamModal(true)} className="relative group cursor-pointer">
@@ -1074,7 +1088,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
                  </div>
              </div>
 
-             {/* Terms Agreement */}
+              {/* Terms Agreement */}
              <div className="flex items-start gap-3 pt-2 pb-2">
                 <input 
                   type="checkbox" 
@@ -1084,15 +1098,59 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
                   className="mt-1 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                 />
                 <label htmlFor="agree-terms" className="text-xs text-slate-500 leading-relaxed cursor-pointer select-none">
-                  我已詳細閱讀並同意遵守 <button type="button" onClick={onShowPrivacy} className="text-indigo-600 hover:text-indigo-800 hover:underline font-bold transition-colors">隱私權保護政策</button> 與 <button type="button" onClick={onShowTerms} className="text-indigo-600 hover:text-indigo-800 hover:underline font-bold transition-colors">使用者服務條款</button>。
+                  我已閱讀並了解 <button type="button" onClick={onShowPrivacy} className="text-indigo-600 hover:text-indigo-800 hover:underline font-bold transition-colors">隱私權保護政策</button>，並同意 <button type="button" onClick={onShowTerms} className="text-indigo-600 hover:text-indigo-800 hover:underline font-bold transition-colors">使用者服務條款</button>。
                 </label>
              </div>
 
-             <button type="submit" disabled={loading || !isAgreed} className={`w-full py-4 font-black rounded-[1rem] transition-all flex items-center justify-center gap-2 mt-2 ${!isAgreed ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:opacity-90 active:scale-[0.98] shadow-lg shadow-indigo-600/30'}`}>
-                {loadingAction === 'otp-verify' && <Loader2 className="w-5 h-5 animate-spin" />}
-                註冊並立即登入
+              <button type="submit" disabled={loading} className="mt-2 flex w-full items-center justify-center gap-2 rounded-[1rem] bg-gradient-to-r from-indigo-600 to-violet-600 py-4 font-black text-white shadow-lg shadow-indigo-600/30 transition-all hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60">
+                 {loading && <Loader2 className="w-5 h-5 animate-spin" />}
+                建立帳號
              </button>
            </form>
+        )}
+
+        {mode === 'onboarding' && (
+          <form onSubmit={handleCompleteOnboarding} className="space-y-5">
+            <div className="flex items-center justify-between rounded-2xl border border-white bg-white/80 px-4 py-3 shadow-sm">
+              <div className="flex items-center gap-2 text-xs font-black text-slate-700"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-600 text-[10px] text-white">1</span> 個人資料設定</div>
+              <span className="text-[10px] font-black tracking-[0.14em] text-indigo-500">STEP 1 / 1</span>
+            </div>
+            <div className="rounded-[1.5rem] border border-indigo-100 bg-indigo-50/70 p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[1rem] bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-200"><Sparkles className="h-5 w-5" /></div>
+                <div>
+                  <p className="text-base font-black text-slate-900">帳號建立完成</p>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">填完這三項，我們就能為你安排更合適的學習空間。</p>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor={`auth-${mode}-name`} className="ml-1 flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-slate-500"><span className="text-indigo-500">01</span> 暱稱 Username</label>
+              <div className="relative group">
+                <UserIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500" />
+                <input type="text" id={`auth-${mode}-name`} value={name} onChange={e => setName(e.target.value)} required maxLength={20} autoComplete="nickname" className="w-full rounded-[1rem] border-2 border-slate-100 bg-slate-50/50 py-3.5 pl-12 pr-4 text-sm font-semibold text-slate-800 outline-none transition-all hover:border-slate-200 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10" placeholder="輸入顯示名稱" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label className="ml-1 flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-slate-500"><span className="text-indigo-500">02</span> 大考類別</label>
+                <button type="button" onClick={() => setShowExamModal(true)} className="group flex w-full items-center justify-between rounded-[1rem] border-2 border-slate-100 bg-white/75 px-4 py-3.5 text-left text-sm font-semibold text-slate-800 shadow-sm transition-all hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-white hover:shadow-md">
+                  <span className="truncate">{EXAM_PRESETS.find(e => e.id === examType)?.name || '請選擇'}</span><Calendar className="h-4 w-4 text-slate-400 transition-colors group-hover:text-indigo-500" />
+                </button>
+              </div>
+              <div className="space-y-1.5">
+                <label className="ml-1 flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-slate-500"><span className="text-indigo-500">03</span> 就讀學校</label>
+                <button type="button" onClick={() => setShowTeamModal(true)} className="group flex w-full items-center justify-between rounded-[1rem] border-2 border-slate-100 bg-white/75 px-4 py-3.5 text-left text-sm font-semibold text-slate-800 shadow-sm transition-all hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-white hover:shadow-md">
+                  <span className="truncate">{selectedTeam || '請選擇學校'}</span><MapPin className="h-4 w-4 text-slate-400 transition-colors group-hover:text-indigo-500" />
+                </button>
+              </div>
+            </div>
+            <p className="auth-method-hint">暱稱與隊伍會出現在公開排行榜，請避免填入私人聯絡資訊。</p>
+            <button type="submit" disabled={loading} className="mt-3 flex w-full items-center justify-center gap-2 rounded-[1.1rem] bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-600 bg-[length:200%_100%] py-4 font-black text-white shadow-lg shadow-indigo-600/30 transition-all hover:bg-right active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60">
+              {loading && <Loader2 className="h-5 w-5 animate-spin" />}完成設定，開始使用
+            </button>
+            <p className="text-center text-[11px] font-semibold text-slate-400">這些資料之後都可以在帳號管理中修改</p>
+          </form>
         )}
 
         {/* Login Form */}
@@ -1106,18 +1164,18 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
                 <div className="min-w-0">
                   <div className="text-base font-black text-slate-800">登入信已寄出</div>
                   <div className="text-xs text-slate-500 font-semibold mt-1 leading-relaxed break-words">
-                    已寄送至 {maskEmail(email)}。你可以直接開啟信中的登入連結信件未找到可能在垃圾郵件，或輸入信件裡的一次性驗證碼。
+                    已寄送至 {maskEmail(email)}。你可以開啟信中的登入連結，或輸入一次性驗證碼。若找不到信件，請檢查垃圾郵件。
                   </div>
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">一次性驗證碼</label>
+                <label htmlFor={`auth-${mode}-oneTimeCode`} className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">一次性驗證碼</label>
                 <div className="relative group">
                   <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                   <input
                     type="text"
-                    value={oneTimeCode}
+                    id={`auth-${mode}-oneTimeCode`} value={oneTimeCode}
                     onChange={e => setOneTimeCode(e.target.value.replace(/\s/g, '').slice(0, 12))}
                     required
                     inputMode="numeric"
@@ -1145,36 +1203,23 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
             </form>
           ) : (
             <form onSubmit={handleLogin} className="space-y-4">
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-2xl bg-white text-slate-700 shadow-sm">
-                    <ShieldQuestion className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-black text-slate-900">安全登入</div>
-                    <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
-                      使用密碼、一次性登入信(如未找到可能在垃圾郵件中)，或手機金鑰進入帳號。
-                    </p>
-                  </div>
-                </div>
-              </div>
               <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">Email 登入信箱</label>
+                <label htmlFor={`auth-${mode}-email`} className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">Email 登入信箱</label>
                 <div className="relative group">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} required maxLength={254} autoComplete="email" inputMode="email" className="w-full bg-white border-2 border-slate-200 hover:border-slate-300 focus:border-slate-900 focus:bg-white rounded-[1rem] py-3.5 pl-12 pr-4 text-sm outline-none focus:ring-4 focus:ring-slate-900/10 transition-all font-semibold text-slate-800 placeholder-slate-400 shadow-sm" placeholder="example@mail.com" />
+                  <input type="email" id={`auth-${mode}-email`} value={email} onChange={e => setEmail(e.target.value)} required maxLength={254} autoComplete="email" inputMode="email" className="w-full bg-white border-2 border-slate-200 hover:border-slate-300 focus:border-slate-900 focus:bg-white rounded-[1rem] py-3.5 pl-12 pr-4 text-sm outline-none focus:ring-4 focus:ring-slate-900/10 transition-all font-semibold text-slate-800 placeholder-slate-400 shadow-sm" placeholder="example@mail.com" />
                 </div>
               </div>
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between ml-1">
-                  <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest">密碼</label>
+                  <label htmlFor={`auth-${mode}-password`} className="text-[11px] font-black text-slate-500 uppercase tracking-widest">密碼</label>
                   <button type="button" onClick={() => { resetForm(); setMode('forgot'); }} className="text-[11px] font-bold text-slate-500 hover:text-slate-950 transition-colors">忘記密碼？</button>
                 </div>
                 <div className="relative group">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                   <input
                     type={showPassword ? 'text' : 'password'}
-                    value={password}
+                    id={`auth-${mode}-password`} value={password}
                     onChange={e => setPassword(e.target.value)}
                     required
                     maxLength={MAX_PASSWORD_LENGTH}
@@ -1186,7 +1231,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                    tabIndex={-1}
+                    aria-label={showPassword ? "隱藏密碼" : "顯示密碼"} aria-pressed={showPassword}
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
@@ -1196,16 +1241,18 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
                 {loadingAction === 'password' && <Loader2 className="w-5 h-5 animate-spin" />}
                 登入帳號
               </button>
-              <div className="space-y-3">
+              <div className="auth-method-divider"><span />或使用其他登入方式<span /></div>
+              <div className="auth-alternative-methods">
                 <button type="button" onClick={handleOneTimeLogin} disabled={loading} className="w-full py-3.5 bg-white border-2 border-slate-200 text-slate-700 font-black rounded-[1rem] hover:border-slate-300 hover:bg-slate-50 transition-all flex items-center justify-center gap-2">
                   {loadingAction === 'otp-send' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                  寄送一次性登入連結
+                  寄送一次性登入信
                 </button>
                 <button type="button" onClick={handlePasskeyLogin} disabled={loading || !authService.isPasskeySupported()} className="w-full py-3.5 bg-cyan-50 border-2 border-cyan-100 text-cyan-700 font-black rounded-[1rem] hover:border-cyan-200 hover:bg-cyan-100/70 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                   {loadingAction === 'passkey' ? <Loader2 className="w-5 h-5 animate-spin" /> : <KeyRound className="w-5 h-5" />}
-                  手機金鑰
+                  Passkey 登入
                 </button>
               </div>
+              <p className="auth-method-hint">登入信不需要密碼；Passkey 需事先設定並使用支援的裝置。{!authService.isPasskeySupported() && '目前環境不支援 Passkey，請使用密碼或登入信。'}</p>
             </form>
           )
         )}
@@ -1217,15 +1264,15 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
               {forgotStep === 1 && (
                  <form onSubmit={handleCheckEmailForRecovery} className="space-y-5">
                     <div className="space-y-1.5">
-                       <label className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">您的 Email 電子信箱</label>
+                       <label htmlFor={`auth-${mode}-email`} className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">您的 Email 電子信箱</label>
                        <div className="relative group">
                           <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                          <input type="email" value={email} onChange={e => setEmail(e.target.value)} required maxLength={254} autoComplete="email" inputMode="email" className="w-full bg-slate-50/50 border-2 border-slate-100 hover:border-slate-200 focus:border-indigo-500 focus:bg-white rounded-[1rem] py-3.5 pl-12 pr-4 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 placeholder-slate-400" placeholder="example@mail.com" />
+                          <input type="email" id={`auth-${mode}-email`} value={email} onChange={e => setEmail(e.target.value)} required maxLength={254} autoComplete="email" inputMode="email" className="w-full bg-slate-50/50 border-2 border-slate-100 hover:border-slate-200 focus:border-indigo-500 focus:bg-white rounded-[1rem] py-3.5 pl-12 pr-4 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 placeholder-slate-400" placeholder="example@mail.com" />
                        </div>
                     </div>
                     <button type="submit" disabled={loading} className="w-full py-4 bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-black rounded-[1rem] hover:opacity-90 active:scale-[0.98] shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2">
                        {loading && <Loader2 className="w-5 h-5 animate-spin" />}
-                       尋找帳號
+                       寄送重設連結
                     </button>
                  </form>
               )}
@@ -1240,7 +1287,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
                         <div>
                            <div className="font-black text-slate-800">重設連結已寄出</div>
                            <div className="text-xs text-slate-500 font-medium mt-1 leading-relaxed">
-                              請到 {maskEmail(email)} 開啟信件中的連結。因系統更換資料庫，舊帳號需要先重設密碼後才能登入。
+                              請到 {maskEmail(email)} 開啟重設連結。若未收到，請檢查信箱拼字與垃圾郵件。
                            </div>
                         </div>
                     </div>
@@ -1263,30 +1310,31 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
                 </div>
               )}
               <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">新密碼</label>
+                <label htmlFor={`auth-${mode}-newPassword`} className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">新密碼</label>
                 <div className="relative group">
                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                   <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required minLength={MIN_PASSWORD_LENGTH} maxLength={MAX_PASSWORD_LENGTH} autoComplete="new-password" className="w-full bg-slate-50/50 border-2 border-slate-100 hover:border-slate-200 focus:border-indigo-500 focus:bg-white rounded-[1rem] py-3.5 pl-12 pr-4 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 placeholder-slate-400" placeholder="輸入新密碼" />
+                   <input type={showPassword ? "text" : "password"} id={`auth-${mode}-newPassword`} value={newPassword} onChange={e => setNewPassword(e.target.value)} required minLength={MIN_PASSWORD_LENGTH} maxLength={MAX_PASSWORD_LENGTH} autoComplete="new-password" className="w-full bg-slate-50/50 border-2 border-slate-100 hover:border-slate-200 focus:border-indigo-500 focus:bg-white rounded-[1rem] py-3.5 pl-12 pr-12 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 placeholder-slate-400" placeholder="輸入新密碼" />
+                   <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? '隱藏密碼' : '顯示密碼'} aria-pressed={showPassword} className="absolute right-4 top-1/2 -translate-y-1/2">{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button>
                 </div>
                 <PasswordStrengthMeter password={newPassword} />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">確認新密碼</label>
+                <label htmlFor={`auth-${mode}-confirmPassword`} className="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">確認新密碼</label>
                 <div className="relative group">
                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                   <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required minLength={MIN_PASSWORD_LENGTH} maxLength={MAX_PASSWORD_LENGTH} autoComplete="new-password" className="w-full bg-slate-50/50 border-2 border-slate-100 hover:border-slate-200 focus:border-indigo-500 focus:bg-white rounded-[1rem] py-3.5 pl-12 pr-4 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 placeholder-slate-400" placeholder="再次輸入新密碼" />
+                   <input type={showPassword ? "text" : "password"} id={`auth-${mode}-confirmPassword`} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required minLength={MIN_PASSWORD_LENGTH} maxLength={MAX_PASSWORD_LENGTH} autoComplete="new-password" className="w-full bg-slate-50/50 border-2 border-slate-100 hover:border-slate-200 focus:border-indigo-500 focus:bg-white rounded-[1rem] py-3.5 pl-12 pr-12 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 placeholder-slate-400" placeholder="再次輸入新密碼" />
                 </div>
               </div>
               <button type="submit" disabled={loading} className="w-full mt-2 py-4 bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-black rounded-[1rem] hover:opacity-90 active:scale-[0.98] shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2">
                  {loading && <Loader2 className="w-5 h-5 animate-spin" />}
-                 確認重設並登入
+                 更新密碼
               </button>
            </form>
         )}
 
         {/* Footer Links */}
         {(mode === 'login' || mode === 'signup' || mode === 'forgot' || mode === 'reset') && (
-           <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-center gap-4 text-sm font-semibold text-slate-500">
+           <div className="auth-switch-footer">
               {mode === 'login' && (
                  <>
                     <span className="text-slate-400">還沒有帳號？</span>
@@ -1306,9 +1354,10 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
               )}
            </div>
         )}
-        </div>
+        </section>
       </div>
-    </div>
+      <footer className="auth-page-footer"><p>FOCUS SPACE <span>·</span> 把今天的專注，留給明天的自己。</p><div><button type="button" onClick={onShowInstructions}>使用說明</button><button type="button" onClick={onShowPrivacy}>隱私權政策</button><button type="button" onClick={onShowTerms}>服務條款</button><a href="mailto:tyctw.analyze@gmail.com">聯絡我們</a></div></footer>
+    </main>
     
       {/* Team Selection Modal */}
       <TeamSelectModal 
@@ -1330,4 +1379,4 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
   );
 };
 
-export default AuthModal;
+export default AuthPage;

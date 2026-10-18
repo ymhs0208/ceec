@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { X, Trophy, Medal, Crown, Timer, AlertCircle, Loader2, Info, Swords, Target, Flame, Sparkles, Share2, TrendingUp, Award, Flag, MapPin, Search, ArrowLeft } from 'lucide-react';
+import ModalLayer from './ModalLayer';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { X, Trophy, Medal, Crown, Timer, AlertCircle, Loader2, Info, Swords, Target, Flame, Sparkles, Share2, TrendingUp, Award, Flag, MapPin, Search, ArrowLeft, ArrowUpRight, RefreshCw, Users, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { authService } from '../services/authService';
 import { RankingItem, User, ChallengeRecord, StudySession } from '../types';
 import TeamSelectModal from './TeamSelectModal';
+import './RankingPage.css';
 
 interface RankingBoardProps {
   isOpen: boolean;
@@ -146,6 +148,7 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
   const [showInfo, setShowInfo] = useState(false);
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
   const [confirmQuit, setConfirmQuit] = useState(false);
+  const rankingRequestRef = useRef(0);
   
   const [showCongrats, setShowCongrats] = useState(false);
   const [currentCongrats, setCurrentCongrats] = useState<{icon: React.ReactNode, text: string, animation: any, title?: string} | null>(null);
@@ -154,47 +157,37 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
     if (isOpen && (activeTab === 'global' || activeTab === 'team')) {
       fetchRanking();
     }
-  }, [isOpen, activeTab]);
+    return () => { rankingRequestRef.current += 1; };
+  }, [isOpen, activeTab, team, currentUser?.email]);
 
   const fetchRanking = async () => {
+    const request = ++rankingRequestRef.current;
     setLoading(true);
     setError('');
     try {
       const data = await authService.getRanking(currentUser?.email, team);
+      if (request !== rankingRequestRef.current) return;
+      if (!data.success) {
+        setError(data.message || '無法載入排行榜');
+        return;
+      }
       
-      // 修復同分名次不同問題：重新計算 globalRanking 名次
+      // Keep server ranks: the current user can be outside the leading 50.
       const globalSorted = [...(data.globalRanking || [])].sort((a, b) => {
         if (b.totalMinutes !== a.totalMinutes) return b.totalMinutes - a.totalMinutes;
         return (a.name || '').localeCompare(b.name || '');
       });
-      let gRank = 1, gOffset = 0;
-      for (let i = 0; i < globalSorted.length; i++) {
-        if (i > 0 && globalSorted[i].totalMinutes < globalSorted[i-1].totalMinutes) {
-          gRank += 1 + gOffset;
-          gOffset = 0;
-        } else if (i > 0) {
-          gOffset++;
-        }
-        globalSorted[i].rank = gRank;
-      }
       setRanking(globalSorted);
 
-      // 修復同分名次不同問題：重新計算 teamRankingBackend 名次
+      // Preserve authoritative ranks when our team is outside the first 30.
       const teamSorted = [...(data.teamRanking || [])].sort((a, b) => {
         if (b.points !== a.points) return b.points - a.points;
         return (a.name || '').localeCompare(b.name || '');
       });
-      let tRank = 1, tOffset = 0;
-      for (let i = 0; i < teamSorted.length; i++) {
-        if (i > 0 && teamSorted[i].points < teamSorted[i-1].points) {
-          tRank += 1 + tOffset;
-          tOffset = 0;
-        } else if (i > 0) {
-          tOffset++;
-        }
-        teamSorted[i].rank = tRank;
-        teamSorted[i].trend = Number(teamSorted[i].trend || 0);
-        teamSorted[i].isNew = Boolean(teamSorted[i].isNew);
+      for (const item of teamSorted) {
+        item.rank = Number(item.rank);
+        item.trend = Number(item.trend || 0);
+        item.isNew = Boolean(item.isNew);
       }
       setTeamRankingBackend(teamSorted);
       
@@ -219,9 +212,9 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
          }
       }
     } catch (e) {
-      setError('無法載入排行榜');
+      if (request === rankingRequestRef.current) setError('無法載入排行榜');
     } finally {
-      setLoading(false);
+      if (request === rankingRequestRef.current) setLoading(false);
     }
   };
 
@@ -234,36 +227,10 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
   }, [challengeRecords]);
 
   const teamRanking = useMemo(() => {
-    let base = (teamRankingBackend || []);
-    
-    if (team) {
-       const found = base.find(t => t.name === team);
-       if (!found) {
-           base = [...base, { rank: 99999, name: team, points: 0, trend: 0, isNew: true }];
-       }
-    }
-
-    const sorted = base.map(t => ({
-      ...t,
-      isCurrentTeam: t.name === team
-    })).sort((a, b) => {
-        if (b.points !== a.points) return b.points - a.points;
-        return (a.name || '').localeCompare(b.name || '');
-    });
-
-    let currentRank = 1;
-    let offset = 0;
-    for (let i = 0; i < sorted.length; i++) {
-        if (i > 0 && sorted[i].points < sorted[i-1].points) {
-            currentRank += 1 + offset;
-            offset = 0;
-        } else if (i > 0) {
-            offset++;
-        }
-        sorted[i].rank = currentRank;
-    }
-    
-    return sorted;
+    // The response may include our team beyond the leading 30. Re-ranking this
+    // partial list would incorrectly turn e.g. rank 42 into rank 31.
+    return teamRankingBackend.map(item => ({ ...item, isCurrentTeam: item.name === team }))
+      .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
   }, [team, teamRankingBackend]);
 
   if (!isOpen) return null;
@@ -284,11 +251,6 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
   const currentUserRank = ranking.find(r => r.isCurrentUser);
   const visibleCount = activeTab === 'team' ? teamRanking.length : activeTab === 'personal' ? sortedPersonalRecords.length : ranking.length;
   const totalFocusMinutes = studySessions.reduce((sum, session) => sum + (session.durationMinutes || 0), 0);
-  const activeMetric = activeTab === 'team'
-    ? `${teamRanking.length.toLocaleString()} 隊`
-    : activeTab === 'personal'
-      ? `${sortedPersonalRecords.length.toLocaleString()} 筆`
-      : `${ranking.length.toLocaleString()} 人`;
   const tabItems: { id: 'team' | 'global' | 'personal'; label: string; caption: string; metric: string; icon: React.ReactNode; activeClass: string; hoverClass: string }[] = [
     {
       id: 'team',
@@ -296,8 +258,8 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
       caption: team ? `${team} 戰隊` : '加入學校戰隊',
       metric: `${teamRanking.length.toLocaleString()} 隊`,
       icon: <Flag className="h-4 w-4" />,
-      activeClass: 'bg-slate-950 text-white shadow-lg shadow-slate-300/60',
-      hoverClass: 'text-slate-500 hover:bg-slate-50 hover:text-slate-900',
+      activeClass: 'bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-200/70',
+      hoverClass: 'text-slate-500 hover:bg-indigo-50 hover:text-indigo-700',
     },
     {
       id: 'global',
@@ -319,21 +281,6 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
     },
   ];
   const activeTabItem = tabItems.find(tab => tab.id === activeTab) || tabItems[1];
-  const pageTabClass = (tab: typeof tabItems[number]) =>
-    `flex min-h-[62px] flex-col items-center justify-center gap-1 rounded-2xl px-2.5 py-2 text-center transition-all ${
-      activeTab === tab.id ? tab.activeClass : 'border border-slate-200 bg-white text-slate-500 shadow-sm'
-    }`;
-  const sideTabClass = (tab: typeof tabItems[number]) =>
-    `w-full rounded-2xl border px-4 py-3 text-left transition-all flex items-center gap-3 ${
-      activeTab === tab.id
-        ? tab.id === 'team'
-          ? 'border-slate-200 bg-slate-950 text-white shadow-lg shadow-slate-300/50'
-          : tab.id === 'global'
-            ? 'border-amber-200 bg-amber-50 text-amber-800 shadow-sm'
-            : 'border-sky-200 bg-sky-50 text-sky-800 shadow-sm'
-        : 'border-transparent text-slate-500 hover:border-slate-200 hover:bg-white hover:text-slate-900'
-    }`;
-
   // 渲染前三名焦點榜單
   const renderPodium = () => {
     if (ranking.length === 0) return null;
@@ -372,7 +319,7 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.08 + index * 0.08, type: 'spring', stiffness: 240, damping: 24 }}
-          className="group flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg hover:shadow-slate-200/70 sm:p-4"
+          className="global-runner group flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg hover:shadow-slate-200/70 sm:p-4"
         >
           <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-sm font-black shadow-sm ${style.badge}`}>
             {user.rank}
@@ -407,8 +354,8 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
     };
 
     return (
-      <div className="mb-5 mt-3">
-        <div className="mb-3 flex items-end justify-between gap-3 px-1">
+      <div className="global-podium mb-5 mt-3">
+        <div className="global-podium-intro mb-3 flex items-end justify-between gap-3 px-1">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Top 3 Ranking</p>
             <h3 className="text-lg font-black text-slate-950">巔峰前三名</h3>
@@ -419,23 +366,26 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
           </div>
         </div>
 
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        <div className="global-podium-stage grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
           {leader && (
             <motion.div
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ type: 'spring', stiffness: 240, damping: 24 }}
-              className="relative overflow-hidden rounded-3xl border border-amber-200 bg-white p-5 shadow-xl shadow-amber-100/50"
+              className="global-leader relative overflow-hidden rounded-[1.75rem] border border-amber-200 bg-[linear-gradient(135deg,#fffdf4_0%,#ffffff_52%,#fff7df_100%)] p-5 shadow-xl shadow-amber-100/60"
             >
-              <div className="absolute inset-x-0 top-0 h-1 bg-amber-400" />
-              <div className="flex items-start justify-between gap-4">
+              <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-amber-300 via-amber-500 to-orange-400" />
+              <div className="global-leader-corner-icon pointer-events-none absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-2xl">
+                <Trophy className="h-5 w-5" />
+              </div>
+              <div className="global-leader-heading flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-black text-amber-700">
+                  <div className="global-leader-label mb-4 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-black text-amber-700">
                     <Crown className="h-4 w-4" />
                     目前第一名
                   </div>
                   <h4 className="truncate text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">{leader.name}</h4>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
+                  <div className="global-leader-meta mt-2 flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
                     <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-slate-600">
                       <Timer className="h-3.5 w-3.5" />
                       {formatTotalTime(leader.totalMinutes)}
@@ -448,18 +398,19 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
                     )}
                   </div>
                 </div>
-                <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-xl font-black text-white shadow-lg shadow-amber-200">
-                  #1
+                <div className="global-leader-rank flex h-14 w-14 flex-shrink-0 flex-col items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-lg shadow-amber-200 ring-4 ring-white" aria-label="目前第一名">
+                  <Crown className="h-5 w-5" />
+                  <span className="mt-0.5 text-xs font-black">#1</span>
                 </div>
               </div>
 
-              <div className="mt-6 grid grid-cols-2 gap-3">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Focus Time</div>
+              <div className="global-leader-stats mt-6 grid grid-cols-2 gap-3">
+                <div className="global-leader-stat rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400"><Timer className="h-3.5 w-3.5" /> Focus Time</div>
                   <div className="mt-1 text-lg font-black text-slate-950">{formatTotalTime(leader.totalMinutes)}</div>
                 </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Points</div>
+                <div className="global-leader-stat rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400"><Medal className="h-3.5 w-3.5" /> Points</div>
                   <div className="mt-1 text-lg font-black text-slate-950">{Number(leader.totalMinutes || 0).toLocaleString()}</div>
                 </div>
               </div>
@@ -474,17 +425,50 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
     );
   };
 
+  const renderPage = () => {
+    const remoteTab = activeTab !== 'personal';
+    const unavailable = remoteTab && (loading || Boolean(error));
+    const rows = activeTab === 'global' ? ranking : activeTab === 'team' ? teamRanking : sortedPersonalRecords;
+    const myTeamRank = teamRanking.find(item => item.isCurrentTeam);
+    const rankValue = activeTab === 'team' ? myTeamRank?.rank : currentUserRank?.rank;
+    return <section className="heroes-page">
+      <button type="button" onClick={onClose} className="heroes-back"><ArrowLeft size={16} /> 回到首頁</button>
+      <header className="heroes-header"><div><span className="heroes-eyebrow"><Trophy size={14} /> 每一次專注，都是向上一步</span><h1>巔峰英雄榜<span>。</span></h1><p>與夥伴一起累積努力，也看見自己的每一次突破。</p></div><button type="button" className="heroes-rule-button" onClick={() => setShowInfo(true)}><Info size={15} /> 積分規則 <ArrowUpRight size={14} /></button></header>
+      <div className="heroes-summary">
+        <div><span className="heroes-summary-icon"><Users size={20} /></span><div><span>{activeTab === 'personal' ? '挑戰紀錄' : activeTab === 'team' ? '榜上隊伍' : '榜上同學'}</span><strong>{unavailable ? '—' : visibleCount.toLocaleString()}<small>{activeTab === 'personal' ? ' 筆' : activeTab === 'team' ? ' 隊' : ' 人'}</small></strong></div></div>
+        <div><span className="heroes-summary-icon"><Award size={20} /></span><div><span>{activeTab === 'personal' ? '個人最高得分' : activeTab === 'team' ? '我的隊伍排名' : '我的全站排名'}</span><strong>{activeTab === 'personal' ? personalStats?.bestScore ?? '—' : unavailable || !rankValue ? '—' : `#${rankValue}`}</strong></div></div>
+        <div><span className="heroes-summary-icon"><Timer size={20} /></span><div><span>我的累積專注</span><strong>{totalFocusMinutes.toLocaleString()}<small> 分鐘</small></strong></div></div>
+      </div>
+      <div className="heroes-layout"><div className="heroes-main">
+        <div className="heroes-tabs" aria-label="排行榜分類">{tabItems.map(tab => <button key={tab.id} type="button" aria-pressed={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}>{tab.icon}{tab.label}</button>)}</div>
+        <div className="heroes-board-heading"><div><h2>{activeTabItem.label}</h2><p>{activeTab === 'global' ? '依已同步的專注分鐘排序，同分共享名次。' : activeTab === 'team' ? '一起為學校累積積分，看見團隊的力量。' : '依完成任務數排序，同分時用時較短者優先。'}</p></div>{remoteTab && <button type="button" onClick={fetchRanking} disabled={loading} className="heroes-refresh" aria-label="重新整理排行榜"><RefreshCw size={15} className={loading ? 'animate-spin' : ''} /></button>}</div>
+          {activeTab === 'team' && <section className="heroes-team-banner"><span className="heroes-team-icon"><Flag size={22} /></span><div><h3>{team || '找到一起努力的夥伴'}</h3><p>{team ? `我的貢獻：${(currentUserRank?.totalMinutes || 0).toLocaleString()} 積分` : '加入學校戰隊，將專注時數化為團隊積分。'}</p></div>{team ? confirmQuit ? <div className="heroes-team-confirm"><span>確定退出戰隊？</span><button type="button" onClick={() => { setConfirmQuit(false); onJoinTeam?.(''); }}>確定退出</button><button type="button" onClick={() => setConfirmQuit(false)}>取消</button></div> : <button type="button" onClick={() => setConfirmQuit(true)}>退出戰隊</button> : <button type="button" onClick={() => setIsTeamModalOpen(true)}>選擇學校 <ArrowUpRight size={14} /></button>}</section>}
+        {remoteTab && loading ? <div className="heroes-state" role="status"><span className="heroes-state-icon"><Loader2 size={28} className="animate-spin" /></span><h3>正在整理榜單</h3><p>讀取已同步的專注紀錄，請稍候。</p></div> : remoteTab && error ? <div className="heroes-state heroes-state--error" role="alert"><span className="heroes-state-icon"><AlertCircle size={28} /></span><h3>暫時無法載入榜單</h3><p>{error}</p><button type="button" onClick={fetchRanking}><RefreshCw size={14} /> 重新連線</button></div> : <>
+
+          {activeTab === 'global' && ranking.length > 0 && <section className="heroes-podium" aria-label="榜首焦點">{ranking.slice(0, 3).map((item, index) => <div key={`${item.name}-${index}`} className={`heroes-podium-card heroes-podium-card--${Math.min(item.rank, 3)}`}><span className="heroes-podium-rank">{item.rank === 1 ? <Crown size={17} /> : <Medal size={17} />} 第 {item.rank} 名</span><span className="heroes-avatar" aria-hidden="true">{Array.from(item.name || '?')[0]}</span><h3 title={item.name}>{item.name}</h3><p title={item.team || undefined}>{item.team || '專注同行者'}</p><strong>{Number(item.totalMinutes || 0).toLocaleString()}<small> 積分</small></strong><span className="heroes-podium-time">{formatTotalTime(item.totalMinutes)}</span>{item.isCurrentUser && <span className="heroes-you">我</span>}</div>)}</section>}
+          {rows.length ? <div className="heroes-ranking-list"><div className="heroes-list-heading"><span>名次</span><span>{activeTab === 'global' ? '同學 / 隊伍' : activeTab === 'team' ? '隊伍 / 排名趨勢' : '挑戰 / 完成時間'}</span><span>{activeTab === 'personal' ? '完成任務' : '積分'}</span></div><ol>{(activeTab === 'global' ? ranking.slice(3) : rows).map((item: any, index) => {
+            const isMine = activeTab === 'global' ? item.isCurrentUser : activeTab === 'team' ? item.isCurrentTeam : false;
+            const name = activeTab === 'personal' ? SUBJECT_MAP[item.subjectId] || item.subjectId : item.name;
+            const score = activeTab === 'global' ? item.totalMinutes : activeTab === 'team' ? item.points : item.tasksCompleted;
+            return <li key={item.id || `${name}-${index}`} className={isMine ? 'heroes-row heroes-row--mine' : 'heroes-row'}><span className="heroes-row-rank">{activeTab === 'personal' ? index + 1 : item.rank}</span><div className="heroes-row-person"><strong>{name}{isMine && <span className="heroes-you">{activeTab === 'team' ? '我的隊伍' : '我'}</span>}</strong><p>{activeTab === 'global' ? item.team || formatTotalTime(item.totalMinutes) : activeTab === 'personal' ? `${Math.floor(item.duration / 60)} 分鐘 · ${new Date(item.timestamp).toLocaleDateString('zh-TW')}` : item.isNew ? '新上榜' : item.trend > 0 ? `較上週進步 ${item.trend} 名` : item.trend < 0 ? `較上週下降 ${Math.abs(item.trend)} 名` : '排名持平'}</p></div><span className="heroes-row-score">{Number(score || 0).toLocaleString()}<small>{activeTab === 'personal' ? ' 項' : ' 分'}</small></span></li>;
+          })}</ol>{activeTab === 'global' && ranking.length <= 3 && <p className="heroes-list-note">目前所有上榜同學已顯示於榜首焦點。</p>}</div> : <div className="heroes-state"><span className="heroes-state-icon">{activeTab === 'personal' ? <Target size={29} /> : <Trophy size={29} />}</span><h3>{activeTab === 'personal' ? '第一個突破，從現在開始' : '榜單正等待新的努力'}</h3><p>{activeTab === 'personal' ? '完成挑戰後，你的任務紀錄就會出現在這裡。' : '持續累積專注，完成同步後即可查看排名。'}</p></div>}
+        </>}
+      </div><aside className="heroes-sidebar"><section className="heroes-profile"><span className="heroes-aside-label">我的專注旅程</span><div className="heroes-profile-avatar"><Trophy size={26} strokeWidth={1.5} /></div><h2>{currentUser?.name || '每一份努力，都值得被看見'}</h2><p>{currentUser ? team || '繼續累積，朝下一個里程碑前進。' : '登入並同步讀書紀錄，讓你的專注也成為榜上的一份力量。'}</p>{currentUser && <div className="heroes-profile-rank"><span>全站排名</span><strong>{loading || error || !currentUserRank ? '—' : `#${currentUserRank.rank}`}</strong></div>}</section><section className="heroes-notes"><h2><CheckCircle2 size={16} /> 排名小筆記</h2><p>全站與隊伍積分依雲端同步紀錄計算；個人挑戰使用目前裝置的挑戰紀錄。</p><button type="button" onClick={() => setShowInfo(true)}>了解積分方式 <ArrowUpRight size={14} /></button></section></aside></div>
+      <footer className="heroes-footer"><Timer size={13} />{remoteTab && error ? '榜單讀取失敗，請稍後重試。' : remoteTab && loading ? '正在讀取雲端榜單。' : activeTab === 'personal' ? '個人挑戰依目前裝置的紀錄呈現。' : '依本次讀取的雲端資料呈現；可重新整理查看最新排名。'}</footer>
+    </section>;
+  };
+
   return (
     <>
-      {/* 積分規則 Modal (z-[80] 獨立渲染，避免被遮擋) */}
+      {/* 積分規則：使用瀏覽器最上層，不受頁面動畫與頁首層級限制。 */}
       <AnimatePresence>
         {showInfo && (
-          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+          <ModalLayer className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
              <motion.div 
                initial={{ opacity: 0, scale: 0.95, y: 20 }}
                animate={{ opacity: 1, scale: 1, y: 0 }}
                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-               className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden relative"
+               role="dialog" aria-labelledby="ranking-rules-title" className="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto relative"
              >
                 <div className="p-6 bg-gradient-to-br from-indigo-50 to-white relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-100 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4 pointer-events-none"></div>
@@ -493,9 +477,9 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
                             <div className="w-10 h-10 bg-indigo-100/80 text-indigo-600 rounded-xl flex items-center justify-center shadow-inner pt-0.5">
                                 <Award className="w-6 h-6" />
                             </div>
-                            <h3 className="text-xl font-black text-slate-800">積分計算規則</h3>
+                            <h3 id="ranking-rules-title" className="text-xl font-black text-slate-800">積分計算規則</h3>
                         </div>
-                        <button onClick={() => setShowInfo(false)} className="p-2 bg-white rounded-full text-slate-400 hover:text-slate-600 shadow-sm border border-slate-100 transition-colors">
+                        <button aria-label="關閉積分規則" onClick={() => setShowInfo(false)} className="p-2 bg-white rounded-full text-slate-400 hover:text-slate-600 shadow-sm border border-slate-100 transition-colors">
                              <X className="w-5 h-5" />
                         </button>
                     </div>
@@ -510,9 +494,13 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
                         <div>
                             <h4 className="font-bold text-slate-800 text-base mb-1">⏱️ 計時模式積分</h4>
                             <p className="text-sm text-slate-600 leading-relaxed">
-                                使用專注計時器，<strong>每專注 1 分鐘 = 1 分</strong>。此分數將會同步至「全球榮耀榜」與您所屬的「戰隊積分」中。（每日跨夜自動結算上傳，亦可從左側選單強制同步）
+                                使用專注計時器，<strong>每專注 1 分鐘 = 1 分</strong>。儲存並成功同步後，完整分鐘會累計至全站與目前所屬隊伍；休息不計分。排行榜積分不會因祈福花費香火幣而減少。
                             </p>
                         </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-xs leading-6 text-amber-900">
+                      全站顯示前 50 位與目前使用者；隊伍顯示前 30 隊與目前隊伍。同分並列，後續名次跳號。隊伍以成員累計分鐘加總，並非人均；轉隊會連同過去累計分鐘歸入目前隊伍，學校身分為自行選擇。讀書時長目前由裝置回報，尚非完全防作弊的競賽榜單。
                     </div>
 
                     {/* rule 2 */}
@@ -523,7 +511,7 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
                         <div>
                             <h4 className="font-bold text-slate-800 text-base mb-1">🎯 挑戰模式積分</h4>
                             <p className="text-sm text-slate-600 leading-relaxed">
-                                在「五日衝刺」等挑戰模式下，<strong>每完成一項任務（如背單字、寫題目）即獲得 1 分</strong>。此分數為個人挑戰紀錄，僅存於本機端，不影響全球排名。
+                                挑戰模式中，<strong>每完成一項任務即記錄 1 分</strong>，此任務分數僅作個人挑戰紀錄，不加到全站或隊伍積分；挑戰中完成並同步的專注分鐘，仍依一般計時規則計分。
                             </p>
                         </div>
                     </div>
@@ -536,7 +524,7 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
                         <div>
                             <h4 className="font-bold text-slate-800 text-base mb-1">📈 戰隊排名趨勢</h4>
                             <p className="text-sm text-slate-600 leading-relaxed">
-                                系統會自動比對各學校戰隊 <strong>7 天前</strong> 的總積分，為每週戰況產生專屬的「進步徽章」或退步警語，激勵星友一起揪團變強！
+                                趨勢比較目前名次與<strong>最近一個過去日期的排名快照</strong>；沒有快照時不顯示升降，並非固定比較 7 天前的積分。
                             </p>
                         </div>
                     </div>
@@ -548,14 +536,15 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
                     </button>
                 </div>
              </motion.div>
-          </div>
+          </ModalLayer>
         )}
       </AnimatePresence>
 
-      {/* 獨立全螢幕恭喜動畫 (z-[100] 保證在最上層) */}
+      {/* 全螢幕恭喜動畫 */}
       <AnimatePresence>
         {showCongrats && currentCongrats && (
-          <motion.div 
+          <ModalLayer priority={100}>
+          <motion.div
             className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-6 bg-slate-900/90 backdrop-blur-xl"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -600,58 +589,14 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
               </motion.button>
             </motion.div>
           </motion.div>
+          </ModalLayer>
         )}
       </AnimatePresence>
 
-      {/* 排行榜主體 Modal (z-[60]) */}
-      <div className={isPage ? "animate-fade-in" : "fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-6 bg-slate-950/55 backdrop-blur-md animate-fade-in"}>
-        <div className={isPage ? "relative w-full min-h-[calc(100vh-11rem)] flex flex-col gap-6 overflow-visible" : "bg-white rounded-[2rem] w-full max-w-[560px] shadow-[0_28px_70px_-24px_rgba(15,23,42,0.65)] relative border border-white/80 max-h-[92vh] flex flex-col overflow-hidden"}>
+      {/* 排行榜主體 */}
+      {isPage ? renderPage() : <ModalLayer className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-6 bg-slate-950/55 backdrop-blur-md animate-fade-in">
+        <div className="bg-white rounded-[2rem] w-full max-w-[560px] shadow-[0_28px_70px_-24px_rgba(15,23,42,0.65)] relative border border-white/80 max-h-[92vh] flex flex-col overflow-hidden">
           
-          {/* Header：炫光玻璃質感 */}
-          {isPage && (
-          <div className="relative overflow-hidden rounded-[1.5rem] border border-white/70 bg-white/75 p-5 shadow-xl shadow-slate-200/60 backdrop-blur-xl sm:p-7">
-             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-400 via-sky-400 to-emerald-400"></div>
-             <div className="relative z-10 flex flex-col gap-6">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                   <div className="flex items-start gap-4">
-                      <button
-                        onClick={onClose}
-                        className="mt-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:border-slate-300 hover:text-slate-900"
-                        title="返回主頁"
-                      >
-                         <ArrowLeft className="h-5 w-5" />
-                      </button>
-                      <div>
-                         <p className="mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.22em] text-amber-600">
-                            <Trophy className="h-4 w-4" />
-                            Leaderboard
-                         </p>
-                         <h2 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">巔峰英雄榜</h2>
-                         <p className="mt-2 max-w-2xl text-sm font-semibold leading-relaxed text-slate-500">
-                            查看全站、隊伍與個人挑戰排名，把每一次專注累積成可見的進度。
-                         </p>
-                      </div>
-                   </div>
-                   <div className="grid grid-cols-3 gap-2 sm:min-w-[320px]">
-                      <div className="rounded-2xl border border-amber-100 bg-amber-50/80 px-3 py-3 text-center">
-                         <div className="text-xl font-black text-amber-700">{visibleCount.toLocaleString()}</div>
-                         <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-amber-600/70">Entries</div>
-                      </div>
-                      <div className="rounded-2xl border border-sky-100 bg-sky-50/80 px-3 py-3 text-center">
-                         <div className="text-xl font-black text-sky-700">{currentUserRank?.rank ? `#${currentUserRank.rank}` : '-'}</div>
-                         <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-sky-600/70">Your Rank</div>
-                      </div>
-                      <div className="rounded-2xl border border-emerald-100 bg-emerald-50/80 px-3 py-3 text-center">
-                         <div className="text-xl font-black text-emerald-700">{totalFocusMinutes.toLocaleString()}</div>
-                         <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-emerald-600/70">Minutes</div>
-                      </div>
-                   </div>
-                </div>
-
-             </div>
-          </div>
-          )}
-
           {!isPage && (
           <div className="bg-gradient-to-br from-white via-amber-50 to-sky-50 p-4 sm:p-5 relative flex-shrink-0 border-b border-amber-100">
              <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-amber-400 via-sky-400 to-emerald-400"></div>
@@ -684,7 +629,7 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
              <div className="flex p-1 bg-white/80 rounded-2xl mt-4 relative z-10 border border-amber-100 shadow-inner shadow-amber-100/60">
                 <button 
                   onClick={() => setActiveTab('team')}
-                  className={`flex-1 py-1.5 rounded-lg text-[10px] sm:text-xs font-black transition-all duration-300 flex items-center justify-center gap-1.5 ${activeTab === 'team' ? 'bg-slate-950 text-white shadow-md transform scale-100' : 'text-slate-500 hover:text-slate-900 hover:bg-white scale-[0.98]'}`}
+                  className={`flex-1 py-1.5 rounded-lg text-[10px] sm:text-xs font-black transition-all duration-300 flex items-center justify-center gap-1.5 ${activeTab === 'team' ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-200 transform scale-100' : 'text-slate-500 hover:text-indigo-700 hover:bg-indigo-50 scale-[0.98]'}`}
                 >
                    <Flag className="w-3.5 h-3.5" /> 戰隊排行
                 </button>
@@ -703,57 +648,11 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
              </div>
           </div>
           )}
-          {isPage && (
-            <div className="sticky top-3 z-30 rounded-[1.5rem] border border-slate-200/80 bg-slate-50/95 p-2 shadow-lg shadow-slate-200/60 backdrop-blur-xl lg:hidden">
-              <div className="grid grid-cols-3 gap-2">
-                {tabItems.map((tab) => (
-                  <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={pageTabClass(tab)}>
-                    {tab.icon}
-                    <span className="text-xs font-black leading-none">{tab.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className={isPage ? "grid flex-grow gap-5 lg:grid-cols-[270px_minmax(0,1fr)]" : "flex-grow overflow-hidden"}>
-            {isPage && (
-              <aside className="hidden lg:block">
-                <div className="sticky top-6 rounded-[1.5rem] border border-white/70 bg-white/85 p-3 shadow-xl shadow-slate-200/60 backdrop-blur-xl">
-                  <div className="px-3 pb-3 pt-2">
-                    <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Leaderboard</div>
-                    <div className="mt-1 text-lg font-black text-slate-950">{activeTabItem.label}</div>
-                    <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">{activeTabItem.caption}</p>
-                  </div>
-                  <div className="space-y-1.5">
-                    {tabItems.map((tab) => (
-                      <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={sideTabClass(tab)}>
-                        <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl shadow-sm ${activeTab === tab.id && tab.id === 'team' ? 'bg-white/15' : 'bg-white'}`}>
-                          {tab.icon}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-black">{tab.label}</span>
-                          <span className="block truncate text-xs font-semibold opacity-70">{tab.caption}</span>
-                        </span>
-                        <span className="text-xs font-black opacity-70">{tab.metric}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-4 rounded-2xl bg-slate-950 p-4 text-white">
-                    <div className="text-[10px] font-black uppercase tracking-widest text-white/50">目前視圖</div>
-                    <div className="mt-2 text-2xl font-black">{activeMetric}</div>
-                    <div className="mt-1 text-xs font-semibold text-white/60">
-                      {activeTab === 'global' ? '依同步讀書時數排序' : activeTab === 'team' ? '依隊伍積分排序' : '依挑戰得分排序'}
-                    </div>
-                  </div>
-                </div>
-              </aside>
-            )}
-
-          <div className={isPage ? "relative min-w-0 flex-grow rounded-[1.5rem] border border-white/70 bg-white/85 p-3 shadow-xl shadow-slate-200/60 backdrop-blur-xl sm:p-4 md:p-6" : "h-full overflow-y-auto custom-scrollbar p-4 sm:p-5 bg-gradient-to-b from-white to-slate-50 relative"}>
+          <div className="flex-grow overflow-hidden">
+          <div className="h-full overflow-y-auto custom-scrollbar p-4 sm:p-5 bg-gradient-to-b from-white to-slate-50 relative">
              
              {activeTab === 'global' && (
-                <>
+                <div className="global-ranking-view">
                   {loading ? (
                     <div className="py-20 flex flex-col items-center justify-center text-slate-400 gap-5">
                         <div className="relative">
@@ -782,7 +681,7 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
                         </div>
                     </div>
                   ) : (
-                    <div className={isPage ? "pb-2" : "pb-24"}> {/* 留空間給 sticky footer */}
+                    <div className="pb-24"> {/* 留空間給 sticky footer */}
                       {/* 前三名頒獎台 */}
                       {renderPodium()}
 
@@ -799,7 +698,7 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
                           <motion.div 
                             key={`${item.rank}-${item.name}-${idx}`} 
                             variants={itemVariants}
-                            className={`group flex flex-col gap-3 p-3.5 rounded-2xl border transition-all duration-300 sm:flex-row sm:items-center ${item.isCurrentUser ? 'bg-sky-50 border-sky-200 shadow-lg shadow-sky-100/70 ring-4 ring-sky-500/10' : 'bg-white border-slate-100 hover:border-amber-200 hover:bg-amber-50/30 hover:shadow-lg hover:shadow-amber-100/60'}`}
+                            className={`group flex flex-col gap-3 rounded-2xl border p-3.5 transition-all duration-300 sm:flex-row sm:items-center ${item.isCurrentUser ? 'bg-sky-50 border-sky-200 shadow-lg shadow-sky-100/70 ring-4 ring-sky-500/10' : 'bg-white border-slate-100 hover:-translate-y-0.5 hover:border-amber-200 hover:bg-amber-50/30 hover:shadow-lg hover:shadow-amber-100/60'}`}
                           >
                               <div className="flex items-center justify-center w-10 h-10 rounded-2xl bg-slate-50 border border-slate-100 flex-shrink-0">
                                 <span className="text-slate-500 font-black text-base">{item.rank}</span>
@@ -840,7 +739,7 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
                       </motion.div>
                     </div>
                   )}
-                </>
+                </div>
              )}
 
              {activeTab === 'team' && (
@@ -870,14 +769,14 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
                         </div>
                      </div>
                   ) : (
-                     <div className="mb-6 bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 text-white p-5 sm:p-6 rounded-[1.5rem] shadow-xl shadow-indigo-200 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
-                        <div className="absolute bottom-0 left-0 w-32 h-32 bg-fuchsia-400/20 rounded-full blur-xl translate-y-1/3 -translate-x-1/4 pointer-events-none"></div>
+                     <div className="team-spotlight relative mb-6 overflow-hidden rounded-[1.75rem] border border-indigo-200 bg-[radial-gradient(circle_at_88%_8%,rgba(255,255,255,.78),transparent_22%),linear-gradient(135deg,#eef2ff_0%,#ffffff_52%,#f5f3ff_100%)] p-5 text-slate-900 shadow-xl shadow-indigo-100/60 sm:p-6">
+                        <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500"></div>
+                        <div className="pointer-events-none absolute right-7 top-3 h-24 w-24 rounded-full border-[12px] border-indigo-100/70"></div>
                         
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 relative z-10">
                            <div className="flex items-center gap-3 sm:gap-4">
-                              <div className="w-12 h-12 sm:w-14 sm:h-14 bg-white/20 backdrop-blur-md flex items-center justify-center rounded-[1rem] shadow-inner border border-white/20 text-white flex-shrink-0">
-                                 <Flag className="w-6 h-6 sm:w-7 sm:h-7 drop-shadow-sm" />
+                              <div className="w-12 h-12 sm:w-14 sm:h-14 bg-indigo-600 flex items-center justify-center rounded-[1rem] shadow-lg shadow-indigo-200 text-white flex-shrink-0">
+                                 <Flag className="w-6 h-6 sm:w-7 sm:h-7" />
                               </div>
                               <div className="min-w-0 flex-1">
                                  <h3 className="font-black text-xl sm:text-2xl tracking-tight leading-tight mb-0.5 sm:mb-1 truncate">{team} <span className="text-indigo-200 text-[11px] sm:text-[13px] tracking-normal align-middle ml-1">戰隊</span></h3>
@@ -887,7 +786,7 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
                               </div>
                            </div>
                            
-                           <div className="w-full h-px bg-white/20 sm:hidden"></div>
+                           <div className="w-full h-px bg-indigo-100 sm:hidden"></div>
                            
                            {confirmQuit ? (
                               <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 flex-shrink-0 w-full sm:w-auto">
@@ -913,7 +812,7 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
                            ) : (
                                <button 
                                   onClick={() => setConfirmQuit(true)}
-                                  className="w-full sm:w-auto px-4 py-2 bg-white/10 hover:bg-white/25 text-white rounded-[1rem] text-[11px] font-black tracking-widest uppercase transition-all backdrop-blur-sm border border-white/10 hover:shadow-lg active:scale-95 flex-shrink-0 text-center"
+                                  className="w-full sm:w-auto px-4 py-2 bg-white hover:bg-indigo-50 text-indigo-700 rounded-[1rem] text-[11px] font-black tracking-widest uppercase transition-all border border-indigo-100 hover:shadow-lg active:scale-95 flex-shrink-0 text-center"
                                >
                                   更換/退出戰隊
                                </button>
@@ -933,7 +832,7 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
                            <motion.div 
                               key={item.name} 
                               variants={itemVariants}
-                              className={`group flex flex-col gap-3 p-4 rounded-[1.25rem] border-2 transition-all duration-300 sm:flex-row sm:items-center sm:gap-4 ${item.isCurrentTeam ? 'bg-indigo-50/50 border-indigo-200 shadow-lg shadow-indigo-100/50 ring-4 ring-indigo-500/10' : 'bg-white border-slate-100 hover:border-slate-200 hover:bg-slate-50 hover:shadow-lg hover:shadow-slate-200/50'}`}
+                              className={`group flex flex-col gap-3 rounded-[1.25rem] border-2 p-4 transition-all duration-300 sm:flex-row sm:items-center sm:gap-4 ${item.isCurrentTeam ? 'bg-[linear-gradient(135deg,#eef2ff,#ffffff)] border-indigo-200 shadow-lg shadow-indigo-100/50 ring-4 ring-indigo-500/10' : 'bg-white border-slate-100 hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50/30 hover:shadow-lg hover:shadow-violet-100/50'}`}
                            >
                               <div className="flex items-center justify-center w-10 h-10 rounded-2xl bg-slate-50 border border-slate-100 flex-shrink-0">
                                  {item.rank === 1 ? <Crown className="w-8 h-8 text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]" /> :
@@ -1102,7 +1001,7 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
             </div>
           )}
 
-          <div className={isPage ? "rounded-[1.25rem] border border-white/70 bg-white/70 px-6 py-4 text-center shadow-sm backdrop-blur-xl" : "px-6 py-4 bg-white border-t border-slate-100 text-center flex-shrink-0 z-30 shadow-[0_-10px_20px_rgba(0,0,0,0.02)] relative"}>
+          <div className="px-6 py-4 bg-white border-t border-slate-100 text-center flex-shrink-0 z-30 shadow-[0_-10px_20px_rgba(0,0,0,0.02)] relative">
              <p className="text-xs text-slate-500 font-bold flex items-center justify-center gap-2 tracking-wide">
                 <span className="relative flex h-2.5 w-2.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
@@ -1112,8 +1011,8 @@ const RankingBoard: React.FC<RankingBoardProps> = ({ isOpen, onClose, currentUse
              </p>
           </div>
         </div>
-      </div>
-      
+      </ModalLayer>
+      }
       <TeamSelectModal
         isOpen={isTeamModalOpen}
         onClose={() => setIsTeamModalOpen(false)}

@@ -119,12 +119,39 @@ export const EXAM_PRESETS: ExamPreset[] = [
     ]
   },
   { 
+    id: '117cap',
+    name: '117會考 (預估)',
+    shortName: '會考',
+    category: 'cap',
+    year: 117,
+    isEstimated: true,
+    date: '2028-05-20T08:30:00',
+    schedule: [
+      {
+        date: '2028-05-20',
+        subjects: [
+          { name: '社會', start: '08:30', end: '09:40' },
+          { name: '數學', start: '10:30', end: '11:50' },
+          { name: '國文', start: '13:50', end: '15:00' },
+          { name: '寫作測驗', start: '15:50', end: '16:40' }
+        ]
+      },
+      {
+        date: '2028-05-21',
+        subjects: [
+          { name: '自然', start: '08:30', end: '09:40' },
+          { name: '英語(閱讀)', start: '10:30', end: '11:30' },
+          { name: '英語(聽力)', start: '12:05', end: '12:30' }
+        ]
+      }
+    ]
+  },
+  {
     id: '116cap', 
-    name: '116會考 (預計)', 
+    name: '116會考',
     shortName: '會考', 
     category: 'cap',
     year: 116,
-    isEstimated: true,
     date: '2027-05-15T08:30:00',
     schedule: [
       {
@@ -148,11 +175,10 @@ export const EXAM_PRESETS: ExamPreset[] = [
   },
   { 
     id: '116ast', 
-    name: '116分科測驗 (預計)', 
+    name: '116分科測驗', 
     shortName: '分科', 
     category: 'ast',
     year: 116,
-    isEstimated: true,
     date: '2027-07-10T08:40:00',
     schedule: [
       {
@@ -230,33 +256,6 @@ export const EXAM_PRESETS: ExamPreset[] = [
     ]
   },
   { 
-    id: '115cap', 
-    name: '115會考', 
-    shortName: '會考', 
-    category: 'cap',
-    year: 115,
-    date: '2026-05-16T08:30:00',
-    schedule: [
-      {
-        date: '2026-05-16',
-        subjects: [
-          { name: '社會', start: '08:30', end: '09:40' },
-          { name: '數學', start: '10:30', end: '11:50' },
-          { name: '國文', start: '13:50', end: '15:00' },
-          { name: '寫作測驗', start: '15:50', end: '16:40' }
-        ]
-      },
-      {
-        date: '2026-05-17',
-        subjects: [
-          { name: '自然', start: '08:30', end: '09:40' },
-          { name: '英語(閱讀)', start: '10:30', end: '11:30' },
-          { name: '英語(聽力)', start: '12:05', end: '12:30' }
-        ]
-      }
-    ]
-  },
-  { 
     id: '115ast', 
     name: '115分科測驗', 
     shortName: '分科', 
@@ -285,3 +284,9 @@ export const EXAM_PRESETS: ExamPreset[] = [
     ]
   },
 ];
+
+export const CAP_116_SCHEDULE_SOURCE = {
+  url: encodeURI("/116學年度國中教育會考及全國高級中等學校與專科學校五年制適性入學重要日程表.pdf"),
+  title: "116 學年度會考及適性入學重要日程表",
+  note: "教育部 115.09.11 臺教授國部字第 1155404304 號函；各入學管道詳細日程以招生簡章為準。",
+};

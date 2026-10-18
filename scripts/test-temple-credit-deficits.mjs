@@ -1,0 +1,71 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { PGlite } from '@electric-sql/pglite';
+import ts from 'typescript';
+
+const module = { exports: {} };
+const helpers = await readFile(new URL('../utils/templeReconciliation.ts', import.meta.url), 'utf8');
+new Function('module', 'exports', ts.transpileModule(helpers, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText)(module, module.exports);
+const { reconcileTempleCoins, getTempleCoinDifferences } = module.exports;
+const db = new PGlite();
+try {
+  await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
+    create schema auth; create table auth.users(id uuid primary key);
+    create table public.study_logs(user_id uuid references auth.users(id), session_id text,
+      subject_name text, duration_minutes integer, session_timestamp bigint, unique(user_id, session_id));`);
+  await db.exec(await readFile(new URL('../supabase/migrations/202610160001_temple_ledger.sql', import.meta.url), 'utf8'));
+  const user = '00000000-0000-4000-8000-000000000001', other = '00000000-0000-4000-8000-000000000002';
+  await db.query('insert into auth.users values ($1),($2)', [user, other]);
+  const scalar = async (sql, params = []) => Object.values((await db.query(sql, params)).rows[0])[0];
+  const state = () => scalar('select public.get_temple_state($1)', [user]);
+  const ritual = (id, type) => scalar('select public.perform_temple_ritual($1,$2,$3)', [user, id, type]);
+  const history = async () => (await db.query('select session_id as id, subject_name as "subjectName", duration_minutes as "durationMinutes", session_timestamp as timestamp from public.study_logs where user_id=$1', [user])).rows;
+  for (let i = 0; i < 58; i++) await db.query('insert into public.study_logs values ($1,$2,$3,$4,$5)', [user, `history-session-${String(i).padStart(3,'0')}`, '數學', i === 57 ? 105 : 10, Date.now() - (57 - i) * 7200000]);
+  assert.equal((await state()).incenseCoins, 675);
+  await ritual('historical-ticket-action', 'ticket');
+  await ritual('historical-lamp-action', 'lamp');
+  await ritual('historical-fortune-one', 'fortune');
+  await ritual('historical-fortune-two', 'fortune');
+  // Historical/admin reconciliation changed the durable minutes after the old
+  // receipt was issued. The old reader skips an existing ID, even if underpaid.
+  await db.query('update public.study_logs set duration_minutes=115 where user_id=$1 and session_id=$2', [user, 'history-session-057']);
+  const before = await state();
+  const diagnostic = await readFile(new URL('./diagnose-recent-study-coins.sql', import.meta.url), 'utf8');
+  const beforeDiagnostic = (await db.exec(diagnostic)).find(result => result.fields.some(field => field.name === 'missing_coins'));
+  assert.equal(beforeDiagnostic.rows.filter(row => row.credit_status === 'UNDER_AWARDED').length, 1);
+  assert.equal(beforeDiagnostic.rows.find(row => row.credit_status === 'UNDER_AWARDED').missing_coins, 10);
+  assert.equal((await history()).length, 58);
+  assert.deepEqual(reconcileTempleCoins(await history(), before.incenseRecords, before.incenseCoins), { minutes: 685, earned: 675, spent: 660, balance: 15, matches: false });
+  assert.equal(getTempleCoinDifferences(await history(), before.incenseRecords)[0].difference, 10);
+  const originalReceipts = (await db.query('select * from public.temple_ledger where user_id=$1 order by revision', [user])).rows;
+  const migration = await readFile(new URL('../supabase/migrations/202610180001_repair_study_coin_deficits.sql', import.meta.url), 'utf8');
+  await db.exec(migration);
+  const repaired = await state();
+  assert.deepEqual(reconcileTempleCoins(await history(), repaired.incenseRecords, repaired.incenseCoins), { minutes: 685, earned: 685, spent: 660, balance: 25, matches: true });
+  const repair = repaired.incenseRecords.find(record => record.id.startsWith('study-credit-repair:'));
+  assert.equal(repair.amount, 10);
+  assert.equal(repair.studySessionId, 'history-session-057');
+  assert.deepEqual(getTempleCoinDifferences(await history(), repaired.incenseRecords), []);
+  const afterDiagnostic = (await db.exec(diagnostic)).find(result => result.fields.some(field => field.name === 'missing_coins'));
+  assert.ok(afterDiagnostic.rows.every(row => row.credit_status === 'AWARDED'));
+  assert.deepEqual((await db.query('select * from public.temple_ledger where user_id=$1 and revision <= $2 order by revision', [user, originalReceipts.at(-1).revision])).rows, originalReceipts, 'Original earnings and ritual expenses are immutable');
+  const reads = await Promise.all(Array.from({ length: 5 }, () => state()));
+  assert.ok(reads.every(value => value.incenseCoins === 25));
+  await db.exec(migration);
+  assert.equal((await state()).incenseCoins, 25, 'Migration replay cannot reissue the missing ten coins');
+  assert.equal((await ritual('historical-fortune-one', 'fortune')).incenseCoins, 25, 'A historical action retry cannot spend again');
+  await db.query('update public.study_logs set duration_minutes=125 where user_id=$1 and session_id=$2', [user, 'history-session-057']);
+  assert.equal((await state()).incenseCoins, 35, 'Later legitimate corrections account for all prior repairs');
+  assert.equal((await state()).incenseCoins, 35);
+  await db.query('update public.study_logs set duration_minutes=115 where user_id=$1 and session_id=$2', [user, 'history-session-057']);
+  const overpaid = await state();
+  assert.equal(overpaid.incenseCoins, 35, 'Do not silently claw back or alter existing receipts');
+  assert.equal(getTempleCoinDifferences(await history(), overpaid.incenseRecords)[0].difference, -10);
+  await db.query('insert into public.study_logs values ($1,$2,$3,$4,$5)', [other, 'entirely-missing-award', '英文', 10, Date.now() - 20 * 86400000]);
+  assert.equal((await scalar('select public.get_temple_state($1)', [other])).incenseCoins, 10, 'Missing awards on already durable historical logs still repair once');
+  assert.equal((await state()).incenseCoins, 35, 'Repair one user cannot alter another balance');
+  await db.exec('set role authenticated');
+  await assert.rejects(db.query('select public.get_temple_state($1)', [user]), /permission denied/);
+  await assert.rejects(db.query('update public.temple_ledger set amount=99999'), /permission denied/);
+  console.log('PASS: exact 58-session 685/675/660/15 case repairs to 25; append-only receipts, repeated reads, migration replay, later corrections, over-award diagnostics and user isolation');
+} finally { await db.close(); }

@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BookOpen, Clock, Loader2, Radio, Sparkles, UsersRound } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, BookOpen, CalendarDays, Clock3, Coffee, Flame, Loader2, RefreshCw, ShieldCheck, Sparkles, UsersRound } from 'lucide-react';
 import { StudySession } from '../types';
 import { authService } from '../services/authService';
+import './TodayCommunityStudy.css';
 
 interface TodayCommunityStudyProps {
   sessions: StudySession[];
+  variant?: 'card' | 'page';
+  onBack?: () => void;
+  onStartFocus?: () => void;
 }
-
 interface CommunityStats {
   totalMinutes: number;
   activeUsers: number;
@@ -14,187 +17,129 @@ interface CommunityStats {
   averageMinutes: number;
   topSubject?: string;
 }
-
-const formatDuration = (minutes: number) => {
-  const hrs = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  if (hrs <= 0) return `${mins} 分鐘`;
-  if (mins === 0) return `${hrs} 小時`;
-  return `${hrs} 小時 ${mins} 分鐘`;
+const taipeiDay = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+const formatNumber = (value: number) => new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 0 }).format(value);
+const formatDuration = (value: number) => {
+  const minutes = Math.round(value);
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return hours > 0 ? `${formatNumber(hours)} 小時${rest ? ` ${rest} 分鐘` : ''}` : `${rest} 分鐘`;
 };
 
-const getTaipeiTodayBounds = () => {
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
-  const start = new Date(`${today}T00:00:00+08:00`).getTime();
-  return { start, end: start + 86400000 };
-};
-
-const TodayCommunityStudy: React.FC<TodayCommunityStudyProps> = ({ sessions }) => {
+export default function TodayCommunityStudy({ sessions, variant = 'card', onBack, onStartFocus }: TodayCommunityStudyProps) {
   const [stats, setStats] = useState<CommunityStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
-
-  const myToday = useMemo(() => {
-    const { start, end } = getTaipeiTodayBounds();
-    const todaySessions = sessions.filter((session) => session.timestamp >= start && session.timestamp < end);
-    return {
-      minutes: todaySessions.reduce((sum, session) => sum + session.durationMinutes, 0),
-      count: todaySessions.length,
-    };
-  }, [sessions]);
+  const [refreshRevision, setRefreshRevision] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [day, setDay] = useState(taipeiDay);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadStats = async () => {
-      setLoading(true);
-      const response = await authService.getTodayCommunityStats();
-      if (cancelled) return;
-
-      if (response.success && response.stats) {
-        setStats(response.stats);
-        setUnavailable(false);
-      } else {
-        setStats(null);
-        setUnavailable(true);
-      }
-      setLoading(false);
-    };
-
-    loadStats();
-    const timer = window.setInterval(loadStats, 5 * 60 * 1000);
+    const updateDay = () => setDay(taipeiDay());
+    const timer = window.setInterval(updateDay, 30_000);
+    window.addEventListener('focus', updateDay);
+    document.addEventListener('visibilitychange', updateDay);
     return () => {
-      cancelled = true;
       window.clearInterval(timer);
+      window.removeEventListener('focus', updateDay);
+      document.removeEventListener('visibilitychange', updateDay);
     };
   }, []);
 
-  const totalMinutes = stats?.totalMinutes ?? 0;
-  const activeUsers = stats?.activeUsers ?? 0;
-  const averageMinutes = stats?.averageMinutes ?? 0;
-  const maxChartMinutes = Math.max(totalMinutes, averageMinutes, myToday.minutes, 1);
-  const chartBars = [
-    {
-      label: '大家總共',
-      value: totalMinutes,
-      color: 'from-emerald-400 to-teal-500',
-      textColor: 'text-emerald-700',
-    },
-    {
-      label: '平均每人',
-      value: averageMinutes,
-      color: 'from-sky-400 to-indigo-500',
-      textColor: 'text-sky-700',
-    },
-    {
-      label: '我的今日',
-      value: myToday.minutes,
-      color: 'from-amber-400 to-orange-500',
-      textColor: 'text-amber-700',
-    },
-  ];
-  const sessionCount = stats?.sessionCount ?? 0;
-  const sessionShare = Math.min(100, Math.round((sessionCount / Math.max(activeUsers, 1)) * 18));
+  const myToday = useMemo(() => {
+    const start = new Date(`${day}T00:00:00+08:00`).getTime();
+    const records = sessions.filter(session => session.timestamp >= start && session.timestamp < start + 86_400_000);
+    return { minutes: records.reduce((sum, session) => sum + session.durationMinutes, 0), count: records.length };
+  }, [sessions, day]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+    const loadStats = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      setLoading(true);
+      try {
+        const response = await authService.getTodayCommunityStats();
+        if (cancelled) return;
+        if (response.success && response.stats) {
+          setStats(response.stats);
+          setUnavailable(false);
+          setLastUpdated(new Date());
+        } else { setStats(null); setUnavailable(true); }
+      } catch {
+        if (!cancelled) { setStats(null); setUnavailable(true); }
+      } finally {
+        inFlight = false;
+        if (!cancelled) setLoading(false);
+      }
+    };
+    setStats(null);
+    void loadStats();
+    const timer = window.setInterval(() => { void loadStats(); }, 5 * 60_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [refreshRevision, day]);
+
+  const cloudReady = stats !== null && !unavailable;
+  const average = stats?.averageMinutes ?? 0;
+  const total = stats?.totalMinutes ?? 0;
+  const chartMax = Math.max(average, myToday.minutes, 1);
+  const contribution = cloudReady && total > 0 ? Math.min(100, myToday.minutes / total * 100) : null;
+  const contributionLabel = contribution !== null && contribution > 0 && contribution < 1 ? '不到 1%' : `${Math.round(contribution ?? 0)}%`;
+  const comparisonNote = !cloudReady ? '先照著自己的節奏，累積今天的專注。'
+    : average === 0 ? '今天的共讀剛開始，每一段專注都算數。'
+    : myToday.minutes >= average ? `比今日平均多 ${formatDuration(myToday.minutes - average)}，繼續保持自己的節奏。`
+    : '每個人的步調不同，下一段專注就從現在開始。';
+  const dateLabel = new Date(`${day}T12:00:00+08:00`).toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', month: 'long', day: 'numeric', weekday: 'long' });
+  const refreshedAt = lastUpdated?.toLocaleTimeString('zh-TW', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false });
+  const stateText = loading ? '正在更新共讀統計' : unavailable ? '統計暫時無法更新' : '每 5 分鐘更新';
 
   return (
-    <section className="glass-card overflow-hidden rounded-[2rem] border border-white/70 bg-white/80 p-5 shadow-lg shadow-slate-200/60">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-50 to-sky-50 text-emerald-600 ring-1 ring-emerald-100">
-            <BookOpen className="h-6 w-6" />
-            <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 ring-4 ring-white">
-              <Radio className="h-2.5 w-2.5 text-white" />
-            </span>
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="truncate text-lg font-black text-slate-900">今日大家看多久書</h3>
-              {loading && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
-            </div>
-            <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
-              {unavailable
-                ? '雲端共讀統計尚未啟用，先顯示你今天的讀書時間。'
-                : '每 5 分鐘更新一次，只顯示彙總數字。'}
-            </p>
-          </div>
-        </div>
+    <div className={`community-page${variant === 'card' ? ' community-page--card' : ''}`}>
+      {variant === 'page' && <button type="button" onClick={onBack} className="community-back"><ArrowLeft size={15} />回到首頁</button>}
+      <header className="community-heading">
+        <div><p className="community-eyebrow"><span /> FOCUS TOGETHER</p><h1>今日共讀站<span>。</span></h1><p className="community-intro">各自朝著目標，一起累積專注。</p></div>
+        <div className="community-date"><CalendarDays size={16} /><time dateTime={day}>{dateLabel}</time><span>台北時間</span></div>
+      </header>
 
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-right">
-          <div className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Today Total</div>
-          <div className="mt-1 text-xl font-black text-emerald-700">{formatDuration(totalMinutes)}</div>
+      <section className="community-overview" aria-labelledby="community-total-title">
+        <div className="community-total">
+          <div className="community-total-top"><span><UsersRound size={15} />今天，我們一起累積了</span><span className="community-total-tag">全站共讀</span></div>
+          <h2 id="community-total-title" className="sr-only">全站今日專注時間</h2>
+          <div className="community-total-value" aria-busy={loading}>{cloudReady ? <><strong>{formatNumber(Math.floor(total / 60))}</strong><span>小時</span><strong>{formatNumber(Math.round(total % 60))}</strong><span>分鐘</span></> : <><strong>—</strong><span>{loading ? '讀取中' : '等待更新'}</span></>}</div>
+          <div className="community-total-bottom"><p>{cloudReady ? stats.activeUsers > 0 ? `${formatNumber(stats.activeUsers)} 位夥伴，讓今天多了一點前進的力量。` : '今天的共讀剛開始，留下一段屬於你的專注。' : '你的每一段努力，都值得被記住。'}</p><BookOpen size={48} strokeWidth={1} aria-hidden="true" /></div>
         </div>
-      </div>
+        <div className="community-metrics">
+          <CommunityMetric icon={<UsersRound size={19} />} label="今日共讀夥伴" value={cloudReady ? formatNumber(stats.activeUsers) : '—'} unit={cloudReady ? '人' : ''} note="今天留下讀書紀錄的夥伴" />
+          <CommunityMetric icon={<Clock3 size={19} />} label="平均每人專注" value={cloudReady ? formatNumber(average) : '—'} unit={cloudReady ? '分鐘' : ''} note="各自累積，也彼此陪伴" />
+          <CommunityMetric icon={<BookOpen size={19} />} label="今日專注紀錄" value={cloudReady ? formatNumber(stats.sessionCount) : '—'} unit={cloudReady ? '筆' : ''} note="一段一段，把努力留下來" />
+        </div>
+      </section>
 
-      <div className="mt-5 rounded-[1.5rem] border border-slate-100 bg-white/80 p-4 shadow-inner shadow-slate-100/70">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Chart</div>
-            <h4 className="mt-1 text-sm font-black text-slate-900">今日讀書時間比較</h4>
-          </div>
-          <div className="rounded-full bg-slate-50 px-3 py-1 text-[10px] font-black text-slate-500 ring-1 ring-slate-100">
-            Asia/Taipei
-          </div>
-        </div>
+      <div className="community-update" role="status"><span className={`community-update-state${unavailable ? ' is-unavailable' : ''}`}>{loading ? <Loader2 size={13} className="animate-spin" /> : <span className="community-status-dot" />}{stateText}{!loading && cloudReady && refreshedAt && <span className="community-last-updated">· {refreshedAt} 更新</span>}</span><button type="button" onClick={() => setRefreshRevision(value => value + 1)} disabled={loading} aria-label={unavailable ? '重試共讀統計' : '重新整理共讀統計'}><RefreshCw size={13} />{unavailable ? '重試' : '重新整理'}</button></div>
 
-        <div className="space-y-3">
-          {chartBars.map((bar) => (
-            <div key={bar.label}>
-              <div className="mb-1.5 flex items-center justify-between gap-3">
-                <span className="text-xs font-black text-slate-600">{bar.label}</span>
-                <span className={`text-xs font-black ${bar.textColor}`}>{formatDuration(bar.value)}</span>
-              </div>
-              <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-                <div
-                  className={`h-full rounded-full bg-gradient-to-r ${bar.color} transition-all duration-700`}
-                  style={{ width: `${Math.max(5, Math.round((bar.value / maxChartMinutes) * 100))}%` }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-5 grid grid-cols-[1fr_auto] items-end gap-4 rounded-2xl bg-slate-50/80 p-4 ring-1 ring-slate-100">
-          <div>
-            <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Activity Density</div>
-            <div className="mt-1 text-sm font-black text-slate-800">今日紀錄活躍度</div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-rose-400 via-amber-400 to-emerald-400 transition-all duration-700"
-                style={{ width: `${Math.max(6, sessionShare)}%` }}
-              />
-            </div>
+      <section className="community-workspace" aria-label="我的專注與共讀概況">
+        <article className="community-personal">
+          <div className="community-panel-heading"><div><p className="community-eyebrow">YOUR OWN PACE</p><h2>你也在，努力的路上。</h2></div><span className="community-personal-icon"><Sparkles size={20} /></span></div>
+          <div className="community-my-time"><span>我的今日專注</span><strong>{formatDuration(myToday.minutes)}</strong><p>完成 {myToday.count} 段專注{contribution !== null ? ` · 占今日共讀時數 ${contributionLabel}` : ''}</p></div>
+          <p className="community-personal-note">{myToday.minutes > 0 ? '這些時間，都是你為未來留下的累積。' : '不用等到準備好，先給自己一段安靜的時間。'}</p>
+          {(onStartFocus || onBack) && <button type="button" className="community-focus-action" onClick={onStartFocus || onBack}><span><Clock3 size={17} />{myToday.minutes > 0 ? '再留一段時間，給自己' : '開始今天的第一段專注'}</span><ArrowUpRight size={19} /></button>}
+        </article>
+        <article className="community-rhythm">
+          <div className="community-panel-heading"><div><p className="community-eyebrow">TODAY'S RHYTHM</p><h2>一起讀，各自有節奏。</h2></div><span className="community-rhythm-icon"><Flame size={19} /></span></div>
+          <p className="community-panel-description">看看今日平均，也找到適合自己的步調。</p>
+          <div className="community-chart" aria-label="我的今日專注與全站平均比較">
+            {[{ label: '我的今日', value: myToday.minutes, ready: true, tone: 'mine' }, { label: '共讀平均', value: average, ready: cloudReady, tone: 'average' }].map(bar => <div key={bar.tone} className={`community-chart-row community-chart-row--${bar.tone}`}><div><span><i />{bar.label}</span><strong>{bar.ready ? formatDuration(bar.value) : '等待統計'}</strong></div><div className="community-chart-track" role="img" aria-label={`${bar.label}：${bar.ready ? formatDuration(bar.value) : '等待統計'}`}><span style={{ width: `${bar.ready ? bar.value / chartMax * 100 : 0}%` }} /></div></div>)}
           </div>
-          <div className="text-right">
-            <div className="text-2xl font-black text-slate-900">{sessionCount}</div>
-            <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">筆紀錄</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
-          <UsersRound className="mb-2 h-4 w-4 text-sky-500" />
-          <div className="text-lg font-black text-slate-900">{activeUsers}</div>
-          <div className="mt-0.5 text-[10px] font-black uppercase tracking-widest text-slate-400">今日上線讀書</div>
-        </div>
-        <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
-          <Clock className="mb-2 h-4 w-4 text-indigo-500" />
-          <div className="text-lg font-black text-slate-900">{formatDuration(averageMinutes)}</div>
-          <div className="mt-0.5 text-[10px] font-black uppercase tracking-widest text-slate-400">平均每人</div>
-        </div>
-        <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
-          <Sparkles className="mb-2 h-4 w-4 text-amber-500" />
-          <div className="truncate text-lg font-black text-slate-900">{stats?.topSubject || '尚未累積'}</div>
-          <div className="mt-0.5 text-[10px] font-black uppercase tracking-widest text-slate-400">最多人讀</div>
-        </div>
-        <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
-          <BookOpen className="mb-2 h-4 w-4 text-rose-500" />
-          <div className="text-lg font-black text-slate-900">{sessionCount}</div>
-          <div className="mt-0.5 text-[10px] font-black uppercase tracking-widest text-slate-400">今日紀錄</div>
-        </div>
-      </div>
-    </section>
+          <p className="community-comparison-note">{comparisonNote}</p>
+          <div className="community-subject"><span><BookOpen size={15} />今日熱門科目</span><strong>{cloudReady ? stats.topSubject || '等待第一筆紀錄' : '等待統計'}</strong></div>
+        </article>
+      </section>
+      <footer className="community-footer"><span><ShieldCheck size={15} />只分享整體數字，保留每個人的讀書空間。</span><span><Coffee size={14} /> 每一段專注，都有人同行。</span></footer>
+    </div>
   );
-};
+}
 
-export default TodayCommunityStudy;
+function CommunityMetric({ icon, label, value, unit, note }: { icon: React.ReactNode; label: string; value: string; unit?: string; note: string }) {
+  return <div className="community-metric"><span className="community-metric-icon">{icon}</span><div><h3>{label}</h3><p><strong>{value}</strong>{unit && <span>{unit}</span>}</p><small>{note}</small></div></div>;
+}

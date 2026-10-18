@@ -1,3 +1,4 @@
+import ModalLayer from './ModalLayer';
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -33,7 +34,7 @@ const ExamSelectModal: React.FC<ExamSelectModalProps> = ({
 
   return createPortal(
     <AnimatePresence>
-      <div className="fixed inset-0 z-[70000] flex items-center justify-center p-4 sm:p-6">
+      <ModalLayer className="fixed inset-0 z-[70000] flex items-center justify-center p-4 sm:p-6">
         <motion.div 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -81,7 +82,7 @@ const ExamSelectModal: React.FC<ExamSelectModalProps> = ({
           
           <div className="px-8 pb-8 -mt-6 relative z-20">
             {/* Category Selector Tabs */}
-            <div className="flex bg-white p-1.5 rounded-2xl shadow-lg border border-slate-100 overflow-x-auto no-scrollbar mb-8">
+            <div className="grid grid-cols-2 gap-1 bg-white p-1.5 rounded-2xl shadow-lg border border-slate-100 mb-8 min-[420px]:grid-cols-4">
                {CATEGORIES.map((cat) => {
                  const isActive = selectedCategory === cat.id;
                  const Icon = cat.icon;
@@ -89,7 +90,7 @@ const ExamSelectModal: React.FC<ExamSelectModalProps> = ({
                    <button
                      key={cat.id}
                      onClick={() => setSelectedCategory(cat.id)}
-                     className={`flex-1 relative py-3 px-4 rounded-xl text-sm font-bold transition-all whitespace-nowrap z-10 flex items-center justify-center gap-2 ${
+                    className={`relative flex min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-xs font-bold transition-all z-10 min-[420px]:px-3 sm:gap-2 sm:px-4 sm:py-3 sm:text-sm ${
                        isActive
                          ? cat.text
                          : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
@@ -171,7 +172,7 @@ const ExamSelectModal: React.FC<ExamSelectModalProps> = ({
             </div>
           </div>
         </motion.div>
-      </div>
+      </ModalLayer>
     </AnimatePresence>,
     document.body
   );

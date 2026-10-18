@@ -1,50 +1,212 @@
+import AdmissionsResourceCard from './components/AdmissionsResourceCard';
+import CapAnalysisCard from './components/CapAnalysisCard';
+import HomePage from './components/HomePage';
+import ModalLayer from './components/ModalLayer';
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Greeting from './components/Greeting';
 import CountdownDisplay from './components/CountdownDisplay';
-import QuoteCard from './components/QuoteCard';
 import TaskList from './components/TaskList';
 import ScheduleTable from './components/ScheduleTable';
 import StudyTimer from './components/StudyTimer';
 import ImportantDates from './components/ImportantDates';
 import FocusStats from './components/FocusStats';
-import FocusStatsModal from './components/FocusStatsModal';
-import TodayCommunityStudy from './components/TodayCommunityStudy';
-import AuthModal from './components/AuthModal';
-import RankingBoard from './components/RankingBoard';
-import AccountPage from './components/AccountPage';
-import TempleModal from './components/TempleModal';
-import AchievementsModal from './components/AchievementsModal';
-import SettingsPage from './components/SettingsPage';
-import WelcomeSplash from './components/WelcomeSplash';
+import DeferredContent from './components/DeferredContent';
+import PageLink from './components/PageLink';
+import SiteHeader from './components/SiteHeader';
+import StorageNotice from './components/StorageNotice';
+import { readLogoutBackup, saveLogoutBackup, removeLogoutBackup, ACCOUNT_STORAGE_KEYS } from './utils/logoutBackup';
+import { filterStudyHistory, mergeStudyHistoryReset } from './utils/studyHistory';
 import { TvetCategoryModal } from './components/TvetCategoryModal';
 import ConfirmExamSwitchModal from './components/ConfirmExamSwitchModal';
-import { AnnouncementModal, ScoreQueryModal, LoginSuggestionModal, ExamReminderModal } from './components/InfoModals';
-import { ACHIEVEMENTS, Achievement } from './utils/achievements';
+import { ScoreQueryModal, LoginSuggestionModal, ExamReminderModal } from './components/InfoModals';
+import { ACHIEVEMENTS, Achievement, getLocalDateKey, reconcileStudyStreak } from './utils/achievements';
+import { reconcileTempleCoins, getTempleCoinDifferences } from './utils/templeReconciliation';
 import { AchievementToast } from './components/AchievementToast';
-import { TimeLeft, TodoItem, StudySession, User, AppData, ChallengeRecord, CustomDate, StreakData, Playlist, AudioTrack } from './types';
+import { TodoItem, StudySession, User, AppData, ChallengeRecord, CustomDate, StreakData, Playlist, AudioTrack, TempleSyncData } from './types';
 import { EXAM_PRESETS, ExamPreset, TVET_CATEGORIES } from './constants';
-import { Settings, X, ExternalLink, Sparkles, Target, UserCircle, Cloud, Menu, CalendarDays, ArrowRight, ArrowLeft, FileText, Search, ClipboardCheck, AlertTriangle, Trophy, LayoutGrid, GraduationCap, Flame, Clock, Medal, ChevronRight, CheckCircle2, UsersRound, Shield, BookOpen, ScrollText, Lock, Server, ListChecks, RefreshCw, Headphones } from 'lucide-react';
+import { Settings, X, ExternalLink, Sparkles, Target, UserCircle, Cloud, Menu, CalendarDays, ArrowRight, ArrowLeft, FileText, Search, ClipboardCheck, AlertTriangle, Trophy, LayoutGrid, GraduationCap, Flame, Clock, Medal, ChevronRight, CheckCircle2, UsersRound, Shield, BookOpen, ScrollText, Lock, Server, ListChecks, RefreshCw, Headphones, Heart } from 'lucide-react';
 import { authService } from './services/authService';
-import { getTimeLeft, parseTaipeiDateTime } from './utils/time';
+import { parseTaipeiDateTime } from './utils/time';
+import { readStoredJson, safeLocalStorage, localStorageController } from './utils/storage';
 import { updateSeoMetadata } from './utils/seo';
+import { PAGE_ROUTES, ActivePage, AuthRouteMode, isExamId, normalizeExamId, readAppRoute, buildAppRoute, buildAuthRoute, hasAuthCallback } from './utils/appRoutes';
+import AnalyticsConsent, { openAnalyticsSettings } from './components/AnalyticsConsent';
+import { FORTUNES } from './data/fortunes';
+import { useToday } from './utils/useToday';
+
+const OfficialSchedulePage = lazy(() => import('./components/OfficialSchedulePage'));
+const FocusStatsModal = lazy(() => import('./components/FocusStatsModal'));
+const TodayCommunityStudy = lazy(() => import('./components/TodayCommunityStudy'));
+const AuthPage = lazy(() => import('./components/AuthModal'));
+const RankingBoard = lazy(() => import('./components/RankingBoard'));
+const AccountPage = lazy(() => import('./components/AccountPage'));
+const InstructionsPage = lazy(() => import('./components/InstructionsPage'));
+const PrivacyPage = lazy(() => import('./components/PrivacyPage'));
+const TermsPage = lazy(() => import('./components/TermsPage'));
+const RefundPage = lazy(() => import('./components/RefundPage'));
+const CustomerSupportPage = lazy(() => import('./components/CustomerSupportPage'));
+const TempleModal = lazy(() => import('./components/TempleModal'));
+const AchievementsModal = lazy(() => import('./components/AchievementsModal'));
+const SettingsPage = lazy(() => import('./components/SettingsPage'));
+const DonationPage = lazy(() => import('./components/DonationPage'));
+const AnnouncementsPage = lazy(() => import('./components/AnnouncementsPage'));
+
+const PageLoading = () => (
+  <div role="status" className="mx-auto grid min-h-[320px] w-full max-w-7xl place-items-center text-sm font-semibold text-slate-500">
+    正在載入頁面…
+  </div>
+);
+
+// 勳章清單是衍生資料，不可把瀏覽器或同步端傳來的 ID 當成授權依據。
+// 只從可驗證的原始紀錄重新推算，避免任意寫入 ID 後直接顯示為已解鎖。
+const getVerifiedAchievementIds = (data: Pick<AppData, 'tasks' | 'completedTaskIds' | 'studySessions' | 'streak'>): string[] => {
+  return ACHIEVEMENTS.filter(achievement => {
+    try {
+      return achievement.condition(data as AppData);
+    } catch {
+      return false;
+    }
+  }).map(achievement => achievement.id);
+};
+
+const haveSameIds = (left: string[], right: string[]) =>
+  left.length === right.length && left.every(id => right.includes(id));
+
+const mergeCompletedTaskIds = (...sources: (Pick<AppData, 'tasks' | 'completedTaskIds'> | undefined)[]): string[] =>
+  Array.from(new Set(sources.flatMap(source => [
+    ...(source?.completedTaskIds || []),
+    ...(source?.tasks || []).filter(task => task.completed).map(task => task.id),
+  ]).filter(id => typeof id === 'string' && id.length > 0)));
 
 // Helper to merge arrays by ID (Client-side Union)
 // This prevents data loss when switching devices by merging local and cloud records
 const mergeById = <T extends { id: string }>(local: T[], remote: T[] | undefined): T[] => {
   if (!remote || !Array.isArray(remote)) return local;
-  
-  const map = new Map<string, T>();
-  
-  // 1. Add remote items first
-  remote.forEach(item => map.set(item.id, item));
-  
-  // 2. Add local items (Local state takes precedence for modifications, but since ID is timestamp for logs, it acts as a Union)
-  local.forEach(item => map.set(item.id, item));
-  
+  const map = new Map(remote.map(item => [item.id, item]));
+  local.forEach(item => {
+    const remoteItem = map.get(item.id);
+    const localUpdatedAt = Number((item as { updatedAt?: number }).updatedAt) || 0;
+    const remoteUpdatedAt = Number((remoteItem as { updatedAt?: number } | undefined)?.updatedAt) || 0;
+    // Legacy records have no timestamp and retain the existing local-first
+    // behaviour. Newly edited records always keep the latest real change.
+    if (!remoteItem || localUpdatedAt >= remoteUpdatedAt) map.set(item.id, item);
+  });
   return Array.from(map.values());
 };
+
+const mergeDeletedIds = (local?: string[], remote?: string[]): string[] =>
+  Array.from(new Set([...(remote || []), ...(local || [])]));
+
+const mergeSyncMetadata = (local?: Record<string, number>, remote?: Record<string, number>): Record<string, number> => {
+  const merged: Record<string, number> = { ...(remote || {}) };
+  Object.entries(local || {}).forEach(([key, timestamp]) => {
+    merged[key] = Math.max(merged[key] || 0, timestamp || 0);
+  });
+  return merged;
+};
+
+const chooseNewestValue = <T,>(key: string, local: T, remote: T, localMetadata: Record<string, number>, remoteMetadata: Record<string, number>): T =>
+  (remoteMetadata[key] || 0) > (localMetadata[key] || 0) ? remote : local;
+
+const mergeDeletedTracks = (
+  local?: Record<string, string[]>,
+  remote?: Record<string, string[]>,
+): Record<string, string[]> => {
+  const merged: Record<string, string[]> = {};
+  new Set([...Object.keys(remote || {}), ...Object.keys(local || {})]).forEach(playlistId => {
+    merged[playlistId] = mergeDeletedIds(local?.[playlistId], remote?.[playlistId]);
+  });
+  return merged;
+};
+
+const applyCustomDateDeletions = (dates: CustomDate[], deletedIds: string[]) => {
+  const deleted = new Set(deletedIds);
+  return dates.filter(date => !deleted.has(date.id));
+};
+
+// A playlist has two levels of independently editable data. Merge both the
+// playlist and its tracks by ID so additions made on two devices are retained.
+const mergePlaylists = (
+  local: Playlist[],
+  remote: Playlist[] | undefined,
+  deletedPlaylistIds: string[] = [],
+  deletedTrackIds: Record<string, string[]> = {},
+): Playlist[] => {
+  const withoutDeleted = (items: Playlist[]) => items
+    .filter(playlist => !deletedPlaylistIds.includes(playlist.id))
+    .map(playlist => ({
+      ...playlist,
+      tracks: (playlist.tracks || []).filter(track => !deletedTrackIds[playlist.id]?.includes(track.id)),
+    }));
+  if (!remote || !Array.isArray(remote)) return withoutDeleted(local);
+
+  const remoteById = new Map(remote.map(playlist => [playlist.id, playlist]));
+  const merged = remote.map(remotePlaylist => {
+    const localPlaylist = local.find(playlist => playlist.id === remotePlaylist.id);
+    if (!localPlaylist) return remotePlaylist;
+
+    const localUpdatedAt = localPlaylist.updatedAt || 0;
+    const remoteUpdatedAt = remotePlaylist.updatedAt || 0;
+    const latestPlaylist = localUpdatedAt >= remoteUpdatedAt ? localPlaylist : remotePlaylist;
+
+    return {
+      ...latestPlaylist,
+      tracks: mergeById(localPlaylist.tracks || [], remotePlaylist.tracks || []),
+    };
+  });
+
+  local.forEach(playlist => {
+    if (!remoteById.has(playlist.id)) merged.push(playlist);
+  });
+
+  return withoutDeleted(merged);
+};
+
+const mergeAppDataForSync = (local: AppData, remote?: AppData): AppData => {
+  if (!remote) return local;
+  const studyHistoryResetAt = mergeStudyHistoryReset(local.studyHistoryResetAt, remote.studyHistoryResetAt);
+  const deletedCustomDateIds = mergeDeletedIds(local.deletedCustomDateIds, remote.deletedCustomDateIds);
+  const deletedTaskIds = mergeDeletedIds(local.deletedTaskIds, remote.deletedTaskIds);
+  const deletedPlaylistIds = mergeDeletedIds(local.deletedPlaylistIds, remote.deletedPlaylistIds);
+  const deletedTrackIds = mergeDeletedTracks(local.deletedTrackIds, remote.deletedTrackIds);
+  const syncMetadata = mergeSyncMetadata(local.syncMetadata, remote.syncMetadata);
+  const localMetadata = local.syncMetadata || {};
+  const remoteMetadata = remote.syncMetadata || {};
+  return {
+    ...remote,
+    ...local,
+    tasks: mergeById(local.tasks, remote.tasks).filter(task => !deletedTaskIds.includes(task.id)),
+    completedTaskIds: mergeCompletedTaskIds(local, remote),
+    studySessions: filterStudyHistory(mergeById(local.studySessions, remote.studySessions), studyHistoryResetAt),
+    studyHistoryResetAt,
+    challengeRecords: mergeById(local.challengeRecords, remote.challengeRecords),
+    customDates: applyCustomDateDeletions(mergeById(local.customDates, remote.customDates), deletedCustomDateIds),
+    deletedCustomDateIds,
+    deletedTaskIds,
+    syncMetadata,
+    targetSchool: chooseNewestValue('targetSchool', local.targetSchool, remote.targetSchool, localMetadata, remoteMetadata),
+    targetMajor: chooseNewestValue('targetMajor', local.targetMajor, remote.targetMajor, localMetadata, remoteMetadata),
+    targetDateStr: chooseNewestValue('targetDateStr', local.targetDateStr, remote.targetDateStr, localMetadata, remoteMetadata),
+    targetExam: chooseNewestValue('targetExam', local.targetExam, remote.targetExam, localMetadata, remoteMetadata),
+    tvetCategory: chooseNewestValue('tvetCategory', local.tvetCategory, remote.tvetCategory, localMetadata, remoteMetadata),
+    dailyGoal: chooseNewestValue('dailyGoal', local.dailyGoal, remote.dailyGoal, localMetadata, remoteMetadata),
+    team: chooseNewestValue('team', local.team, remote.team, localMetadata, remoteMetadata),
+    playlists: mergePlaylists(local.playlists, remote.playlists, deletedPlaylistIds, deletedTrackIds),
+    deletedPlaylistIds,
+    deletedTrackIds,
+    incenseRecords: mergeById(local.incenseRecords, remote.incenseRecords),
+    unlockedAchievementIds: Array.from(new Set([
+      ...(remote.unlockedAchievementIds || []),
+      ...(local.unlockedAchievementIds || []),
+    ])),
+    examChecklist: { ...(remote.examChecklist || {}), ...(local.examChecklist || {}) },
+  };
+};
+
+const createSessionId = (): string =>
+  crypto.randomUUID?.() || `session_${Date.now()}_${Math.random().toString(36).slice(2, 14)}`;
 
 const DEFAULT_MUSIC_TRACKS: AudioTrack[] = [
   { id: 'lofi', name: '𝐑𝐧𝐁 𝐏𝐥𝐚𝐲𝐥𝐢𝐬𝐭', youtubeId: 'srsSm_nkPDc' },
@@ -60,226 +222,224 @@ const DEFAULT_PLAYLISTS: Playlist[] = [
   { id: 'default', name: '預設歌單', tracks: DEFAULT_MUSIC_TRACKS }
 ];
 
+const getCurrentRoute = () => readAppRoute(new URL(window.location.href));
 const getInitialExamId = () => {
-  const params = new URLSearchParams(window.location.search);
-  const examParam = params.get('exam')?.toLowerCase();
-  if (examParam && EXAM_PRESETS.some(p => p.id === examParam)) {
-    return examParam;
-  }
-  
-  const pathParts = window.location.pathname.split('/').filter(Boolean);
-  const examFromPath = pathParts.find(part => EXAM_PRESETS.some(p => p.id === part.toLowerCase()));
-  if (examFromPath) {
-    return examFromPath.toLowerCase();
-  }
-  
-  return localStorage.getItem('gsat_target_exam') || '116gsat';
+  const storedExam = safeLocalStorage.getItem('gsat_target_exam');
+  return getCurrentRoute().examId || normalizeExamId(storedExam || '') || '116gsat';
 };
-
-const getInitialDate = (initialExamId: string) => {
-  const params = new URLSearchParams(window.location.search);
-  const examParam = params.get('exam')?.toLowerCase();
-  let fromUrl = false;
-  if (examParam && EXAM_PRESETS.some(p => p.id === examParam)) {
-    fromUrl = true;
-  }
-  
-  const pathParts = window.location.pathname.split('/').filter(Boolean);
-  fromUrl = fromUrl || pathParts.some(part => EXAM_PRESETS.some(p => p.id === part.toLowerCase()));
-
-  if (fromUrl) {
-    const preset = EXAM_PRESETS.find(p => p.id === initialExamId);
-    if (preset) return preset.date;
-  }
-
-  return localStorage.getItem('gsat_target_date') || EXAM_PRESETS.find(p => p.id === initialExamId)?.date || '2027-01-16T09:20:00';
+const getInitialDate = (examId: string) => {
+  const preset = EXAM_PRESETS.find(exam => exam.id === examId);
+  const storedDate = safeLocalStorage.getItem('gsat_target_date');
+  const storedExam = safeLocalStorage.getItem('gsat_target_exam');
+  const matchesExam = storedExam !== '115cap' && (!getCurrentRoute().examId || storedExam === examId);
+  if (matchesExam && storedDate && Number.isFinite(parseTaipeiDateTime(storedDate).getTime())) return storedDate;
+  return preset?.date || '2027-01-16T09:20:00';
 };
-
-const SEO_PAGE_LABELS = {
-  home: '',
-  ranking: '排行榜',
-  learning: '讀書統計',
-  achievements: '成就徽章',
-  temple: '祈福神社',
-  settings: '設定',
-  account: '帳號管理',
-  instructions: '使用說明',
-  privacy: '隱私權政策',
-  terms: '服務條款',
-} as const;
-
-type ActivePage = keyof typeof SEO_PAGE_LABELS;
-
-const isActivePage = (page: unknown): page is ActivePage =>
-  typeof page === 'string' && page in SEO_PAGE_LABELS;
-
-const getInitialActivePage = (): ActivePage => {
-  const historyPage = window.history.state?.appPage;
-  if (isActivePage(historyPage)) return historyPage;
-
-  const params = new URLSearchParams(window.location.search);
-  const pageParam = params.get('page');
-  return isActivePage(pageParam) ? pageParam : 'home';
-};
-
-const hasAuthCallbackParams = () => {
-  const href = window.location.href;
-  return (
-    href.includes('reset=true') ||
-    href.includes('login=otp') ||
-    href.includes('type=magiclink') ||
-    href.includes('type=email') ||
-    href.includes('code=') ||
-    href.includes('token_hash=') ||
-    href.includes('access_token=') ||
-    href.includes('refresh_token=') ||
-    href.includes('error_code=')
-  );
-};
-
-const getAppMountPath = () => {
-  const pathParts = window.location.pathname.split('/').filter(Boolean);
-  if (pathParts.length > 0 && EXAM_PRESETS.some(p => p.id === pathParts[pathParts.length - 1].toLowerCase())) {
-    pathParts.pop();
-  }
-
-  return pathParts.length > 0 ? `/${pathParts.join('/')}/` : '/';
-};
-
-const getAppRouteUrl = (page: ActivePage, examId: string) => {
-  const url = new URL(getAppMountPath(), window.location.origin);
-  url.searchParams.set('exam', examId);
-  if (page !== 'home') {
-    url.searchParams.set('page', page);
-  }
-
-  return `${url.pathname}${url.search}`;
-};
+const getInitialActivePage = (): ActivePage => getCurrentRoute().page;
+const getAuthRouteMode = (): AuthRouteMode | undefined => getCurrentRoute().authMode;
+const hasAuthCallbackParams = () => hasAuthCallback(new URL(window.location.href));
+const getAppRouteUrl = (page: ActivePage, examId: string) =>
+  buildAppRoute(page, examId, window.location.search, window.location.hash);
+const getAuthRouteUrl = (page: ActivePage, examId: string, mode?: string) =>
+  buildAuthRoute(page, examId, mode, window.location.search, window.location.hash);
 
 const App: React.FC = () => {
+  const today = useToday();
   const DEFAULT_DATE = '2027-01-16T09:20:00';
   
   // Data State
-  const initialExamId = getInitialExamId();
+  const [initialExamId] = useState(getInitialExamId);
   const [targetExam, setTargetExam] = useState<string>(initialExamId);
   const currentExam = EXAM_PRESETS.find(p => p.id === targetExam);
-  const [targetDateStr, setTargetDateStr] = useState<string>(getInitialDate(initialExamId));
-  const [tvetCategory, setTvetCategory] = useState<string>(() => localStorage.getItem('gsat_tvet_category') || '');
+  const [targetDateStr, setTargetDateStr] = useState<string>(() => getInitialDate(initialExamId));
+  const [tvetCategory, setTvetCategory] = useState<string>(() => safeLocalStorage.getItem('gsat_tvet_category') || '');
   const [isTvetCategoryModalOpen, setIsTvetCategoryModalOpen] = useState(false);
-  const [targetSchool, setTargetSchool] = useState<string>(() => localStorage.getItem('gsat_target_school') || '目標大學');
-  const [targetMajor, setTargetMajor] = useState<string>(() => localStorage.getItem('gsat_target_major') || '目標科系');
+  const [targetSchool, setTargetSchool] = useState<string>(() => safeLocalStorage.getItem('gsat_target_school') || '目標大學');
+  const [targetMajor, setTargetMajor] = useState<string>(() => safeLocalStorage.getItem('gsat_target_major') || '目標科系');
   const [tasks, setTasks] = useState<TodoItem[]>(() => {
-    const saved = localStorage.getItem('gsat_tasks');
-    return saved ? JSON.parse(saved) : [];
+    return readStoredJson<TodoItem[]>('gsat_tasks', []);
   });
-  const [studySessions, setStudySessions] = useState<StudySession[]>(() => {
-    const saved = localStorage.getItem('gsat_study_history');
-    return saved ? JSON.parse(saved) : [];
+  const [completedTaskIds, setCompletedTaskIds] = useState<string[]>(() =>
+    mergeCompletedTaskIds({ tasks, completedTaskIds: readStoredJson<string[]>('gsat_completed_task_ids', []) }));
+  const [studyHistoryResetAt, setStudyHistoryResetAt] = useState(() =>
+    mergeStudyHistoryReset(readStoredJson<number>('gsat_study_history_reset_at', 0)));
+  const studyHistoryResetRef = useRef(studyHistoryResetAt);
+  const [studySessions, setStudySessionState] = useState<StudySession[]>(() => {
+    return filterStudyHistory(readStoredJson<StudySession[]>('gsat_study_history', []), studyHistoryResetAt);
+  });
+  const setStudySessions = (update: React.SetStateAction<StudySession[]>) => {
+    setStudySessionState(prev => filterStudyHistory(typeof update === 'function' ? update(prev) : update, studyHistoryResetRef.current));
+  };
+  const applyStudyHistoryReset = (remoteResetAt?: number) => {
+    const next = mergeStudyHistoryReset(studyHistoryResetRef.current, remoteResetAt);
+    if (next === studyHistoryResetRef.current) return;
+    // Persist the marker before clearing records, including if refresh interrupts.
+    localStorageController.writeRequired('gsat_study_history_reset_at', JSON.stringify(next));
+    studyHistoryResetRef.current = next;
+    setStudyHistoryResetAt(next);
+    setStudySessions(prev => prev);
+  };
+  const [deletedTaskIds, setDeletedTaskIds] = useState<string[]>(() => {
+    return readStoredJson<string[]>('gsat_deleted_task_ids', []);
+  });
+  const [syncMetadata, setSyncMetadata] = useState<Record<string, number>>(() => {
+    return readStoredJson<Record<string, number>>('gsat_sync_metadata', {});
+  });
+  const [pendingStudySessionIds, setPendingStudySessionIds] = useState<string[]>(() => {
+    return readStoredJson<string[]>('gsat_pending_study_session_ids', []);
   });
   const [challengeRecords, setChallengeRecords] = useState<ChallengeRecord[]>(() => {
-    const saved = localStorage.getItem('gsat_challenge_records');
-    return saved ? JSON.parse(saved) : [];
+    return readStoredJson<ChallengeRecord[]>('gsat_challenge_records', []);
   });
   const [customDates, setCustomDates] = useState<CustomDate[]>(() => {
-    const saved = localStorage.getItem('gsat_custom_dates');
-    return saved ? JSON.parse(saved) : [];
+    return readStoredJson<CustomDate[]>('gsat_custom_dates', []);
+  });
+  const [deletedCustomDateIds, setDeletedCustomDateIds] = useState<string[]>(() => {
+    return readStoredJson<string[]>('gsat_deleted_custom_date_ids', []);
   });
   const [team, setTeam] = useState<string>(() => {
-    return localStorage.getItem('gsat_team') || '';
+    return safeLocalStorage.getItem('gsat_team') || '';
   });
 
   // Playlist & Music State (Lifted Up)
   const [playlists, setPlaylists] = useState<Playlist[]>(() => {
-    const saved = localStorage.getItem('gsat_playlists');
-    if (saved) return JSON.parse(saved);
+    const saved = safeLocalStorage.getItem('gsat_playlists');
+    if (saved) return readStoredJson<Playlist[]>('gsat_playlists', DEFAULT_PLAYLISTS);
     
     // Migration: Convert old flat tracks to playlist if exists
-    const oldTracks = localStorage.getItem('gsat_music_tracks');
+    const oldTracks = safeLocalStorage.getItem('gsat_music_tracks');
     if (oldTracks) {
         try {
-            const tracks = JSON.parse(oldTracks);
+            const tracks = readStoredJson<AudioTrack[]>('gsat_music_tracks', []);
             return [{ id: 'default', name: '我的最愛', tracks }];
         } catch(e) {}
     }
     return DEFAULT_PLAYLISTS;
   });
   const [activePlaylistId, setActivePlaylistId] = useState<string>(() => {
-      return localStorage.getItem('gsat_active_playlist_id') || 'default';
+      return safeLocalStorage.getItem('gsat_active_playlist_id') || 'default';
+  });
+  const [deletedPlaylistIds, setDeletedPlaylistIds] = useState<string[]>(() => {
+    return readStoredJson<string[]>('gsat_deleted_playlist_ids', []);
+  });
+  const [deletedTrackIds, setDeletedTrackIds] = useState<Record<string, string[]>>(() => {
+    return readStoredJson<Record<string, string[]>>('gsat_deleted_track_ids', {});
   });
 
   // Daily Goal & Streak State
   const [dailyGoal, setDailyGoal] = useState<number>(() => {
-    const saved = localStorage.getItem('gsat_daily_goal');
-    return saved ? parseInt(saved, 10) : 120; // Default 2 hours (120 mins)
+    const saved = safeLocalStorage.getItem('gsat_daily_goal');
+    const minutes = Number(saved);
+    return Number.isInteger(minutes) && minutes >= 30 && minutes <= 600 ? minutes : 120;
   });
   const [streak, setStreak] = useState<StreakData>(() => {
-    const saved = localStorage.getItem('gsat_streak');
-    return saved ? JSON.parse(saved) : { current: 0, max: 0, lastDate: '' };
+    return readStoredJson<StreakData>('gsat_streak', { current: 0, max: 0, lastDate: '' });
   });
 
   const [incenseCoins, setIncenseCoins] = useState<number>(() => {
-    const saved = localStorage.getItem('gsat_incense_coins');
-    const migrated = localStorage.getItem('gsat_incense_coins_migrated_v2');
+    const saved = safeLocalStorage.getItem('gsat_incense_coins');
+    const migrated = safeLocalStorage.getItem('gsat_incense_coins_migrated_v2');
     
     let coins = saved ? parseInt(saved, 10) : 0;
     
     if (!migrated) {
-      const savedSessions = localStorage.getItem('gsat_study_history');
+      const savedSessions = safeLocalStorage.getItem('gsat_study_history');
       if (savedSessions) {
         try {
-          const sessions = JSON.parse(savedSessions);
+          const sessions = readStoredJson<Array<{ durationMinutes?: number }>>('gsat_study_history', []);
           const pastCoins = sessions.reduce((acc: number, curr: any) => acc + (curr.durationMinutes || 0), 0);
           if (coins < pastCoins) {
              coins = pastCoins;
           }
         } catch (e) {}
       }
-      localStorage.setItem('gsat_incense_coins_migrated_v2', 'true');
+      safeLocalStorage.setItem('gsat_incense_coins_migrated_v2', 'true');
     }
     
     return coins;
   });
   const [incenseRecords, setIncenseRecords] = useState<AppData['incenseRecords']>(() => {
-    const saved = localStorage.getItem('gsat_incense_records');
-    return saved ? JSON.parse(saved) : [];
+    return readStoredJson<AppData['incenseRecords']>('gsat_incense_records', []);
   });
   const [templeState, setTempleState] = useState<AppData['templeState']>(() => {
-    const saved = localStorage.getItem('gsat_temple_state');
-    return saved ? JSON.parse(saved) : { lamps: [], fortunes: [], ticketOffered: false };
+    return readStoredJson<AppData['templeState']>('gsat_temple_state', { lamps: [], fortunes: [], ticketOffered: false });
   });
   const [examChecklist, setExamChecklist] = useState<Record<string, boolean>>(() => {
-    const saved = localStorage.getItem('gsat_exam_checklist');
-    return saved ? JSON.parse(saved) : {};
+    return readStoredJson<Record<string, boolean>>('gsat_exam_checklist', {});
   });
 
-  const [timeLeft, setTimeLeft] = useState<TimeLeft>({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   
   // UI State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [authInitialMode, setAuthInitialMode] = useState<'login' | 'signup' | 'forgot' | 'reset' | 'profile' | 'change-password' | 'devices' | undefined>(undefined);
+  const [isAuthOpen, setIsAuthOpen] = useState(() => getCurrentRoute().isAuth
+    || (getCurrentRoute().page === 'account' && !readStoredJson<User | null>('gsat_user_profile', null)));
+  const [routeRevision, setRouteRevision] = useState(0);
+  const [authInitialMode, setAuthInitialMode] = useState<'login' | 'signup' | 'forgot' | 'reset' | 'profile' | 'change-password' | 'devices' | undefined>(() => {
+    const mode = getAuthRouteMode() || new URLSearchParams(window.location.search).get('authMode');
+    return ['login', 'signup', 'forgot', 'reset', 'profile', 'change-password', 'devices'].includes(mode || '')
+      ? mode as 'login' | 'signup' | 'forgot' | 'reset' | 'profile' | 'change-password' | 'devices'
+      : undefined;
+  });
   const [authInitialEmail, setAuthInitialEmail] = useState<string | undefined>(undefined);
   const [authInitialResetCode, setAuthInitialResetCode] = useState<string | undefined>(undefined);
   const [activePage, setActivePage] = useState<ActivePage>(() => getInitialActivePage());
   const [isScoreWarningOpen, setIsScoreWarningOpen] = useState(false);
   const [isLoginSuggestionOpen, setIsLoginSuggestionOpen] = useState(false);
+
+
   const [isExamReminderOpen, setIsExamReminderOpen] = useState(false);
-  const [isCommunityStudyOpen, setIsCommunityStudyOpen] = useState(false);
   const [isTempleOpen, setIsTempleOpen] = useState(false);
   const [isAchievementsOpen, setIsAchievementsOpen] = useState(false);
-  const [isAnnouncementOpen, setIsAnnouncementOpen] = useState(false);
   const [pendingExamSwitch, setPendingExamSwitch] = useState<ExamPreset | null>(null);
   const [unlockedAchievementIds, setUnlockedAchievementIds] = useState<string[]>(() => {
-    return JSON.parse(localStorage.getItem('gsat_unlocked_achievements') || '[]');
+    return readStoredJson<string[]>('gsat_unlocked_achievements', []);
   });
   const unlockedAchievementIdsRef = useRef(new Set(unlockedAchievementIds));
   const [achievementQueue, setAchievementQueue] = useState<Achievement[]>([]);
   const [currentAchievementToast, setCurrentAchievementToast] = useState<Achievement | null>(null);
-  const [showWelcome, setShowWelcome] = useState(() => sessionStorage.getItem('gsat_welcome_pending') === 'true');
   
   // Confirm Reset State
   const [confirmResetType, setConfirmResetType] = useState<'tasks' | 'sessions' | 'dates' | null>(null);
+
+  const markSyncField = useCallback((field: string) => {
+    const timestamp = Date.now();
+    setSyncMetadata(prev => ({ ...prev, [field]: timestamp }));
+  }, []);
+
+  const setSyncedTasks = useCallback<React.Dispatch<React.SetStateAction<TodoItem[]>>>((value) => {
+    setTasks(previous => {
+      const next = typeof value === 'function' ? value(previous) : value;
+      const nextIds = new Set(next.map(task => task.id));
+      const removedIds = previous.filter(task => !nextIds.has(task.id)).map(task => task.id);
+      if (removedIds.length > 0) setDeletedTaskIds(ids => mergeDeletedIds(ids, removedIds));
+      return next;
+    });
+  }, []);
+
+  const setSyncedTargetExam = useCallback<React.Dispatch<React.SetStateAction<string>>>((value) => {
+    setTargetExam(value); markSyncField('targetExam');
+  }, [markSyncField]);
+  const setSyncedTargetDateStr = useCallback<React.Dispatch<React.SetStateAction<string>>>((value) => {
+    setTargetDateStr(value); markSyncField('targetDateStr');
+  }, [markSyncField]);
+  const setSyncedTargetSchool = useCallback<React.Dispatch<React.SetStateAction<string>>>((value) => {
+    setTargetSchool(value); markSyncField('targetSchool');
+  }, [markSyncField]);
+  const setSyncedTargetMajor = useCallback<React.Dispatch<React.SetStateAction<string>>>((value) => {
+    setTargetMajor(value); markSyncField('targetMajor');
+  }, [markSyncField]);
+  const setSyncedDailyGoal = useCallback<React.Dispatch<React.SetStateAction<number>>>((value) => {
+    setDailyGoal(value); markSyncField('dailyGoal');
+  }, [markSyncField]);
+  const setSyncedTeam = useCallback<React.Dispatch<React.SetStateAction<string>>>((value) => {
+    setTeam(value); markSyncField('team');
+  }, [markSyncField]);
+  const setSyncedTvetCategory = useCallback<React.Dispatch<React.SetStateAction<string>>>((value) => {
+    setTvetCategory(value); markSyncField('tvetCategory');
+  }, [markSyncField]);
+  const setSyncedExamChecklist = useCallback<React.Dispatch<React.SetStateAction<Record<string, boolean>>>>((value) => {
+    setExamChecklist(value); markSyncField('examChecklist');
+  }, [markSyncField]);
 
   // Info Modals State
 
@@ -298,23 +458,60 @@ const App: React.FC = () => {
 
   // Auth State
   const [user, setUser] = useState<User | null>(() => {
-    const savedUser = localStorage.getItem('gsat_user_profile');
-    return savedUser ? JSON.parse(savedUser) : null;
+    return readStoredJson<User | null>('gsat_user_profile', null);
   });
+  const templeRevisionRef = useRef(0);
+  const [templeVerifiedOwner, setTempleVerifiedOwner] = useState<string | null>(null);
+  const [studySyncError, setStudySyncError] = useState('');
+  const isTempleVerified = Boolean(user && templeVerifiedOwner === user.email);
+  useEffect(() => { templeRevisionRef.current = 0; setTempleVerifiedOwner(null); setStudySyncError(''); }, [user?.email]);
+  const applyTempleSyncData = useCallback((data: TempleSyncData) => {
+    if (data.revision !== undefined && data.revision < templeRevisionRef.current) return;
+    templeRevisionRef.current = data.revision ?? templeRevisionRef.current;
+    setTempleVerifiedOwner(user?.email || null);
+    setIncenseCoins(Number.isSafeInteger(data.incenseCoins) && data.incenseCoins >= 0 ? data.incenseCoins : 0);
+    setIncenseRecords(Array.isArray(data.incenseRecords) ? data.incenseRecords : []);
+    const remoteState = data.templeState || { lamps: [], fortunes: [], ticketOffered: false };
+    setTempleState({
+      lamps: Array.isArray(remoteState.lamps) ? remoteState.lamps : [],
+      fortunes: Array.isArray(remoteState.fortunes) ? remoteState.fortunes.map((fortune: any) => {
+        const index = Number.isInteger(fortune?.index) ? Math.abs(fortune.index) % FORTUNES.length : 0;
+        return { ...FORTUNES[index], date: Number(fortune?.date) || Date.now() };
+      }) : [],
+      ticketOffered: Boolean(remoteState.ticketOffered),
+    });
+  }, [user?.email]);
 
   useEffect(() => {
-    if (activePage !== 'account' || user) return;
-    setActivePage('home');
+    if (activePage !== 'account' || user || isAuthOpen) return;
+    setAuthInitialMode('login');
     setIsAuthOpen(true);
-  }, [activePage, user]);
+  }, [activePage, user, isAuthOpen]);
+
+  useEffect(() => {
+    const authMode = getAuthRouteMode();
+    if (!isAuthOpen || !user || authMode === 'reset' || authMode === 'forgot') return;
+    setIsAuthOpen(false);
+    setActivePage(getCurrentRoute().page === 'home' ? 'account' : getCurrentRoute().page);
+  }, [isAuthOpen, user]);
   
   // Store encryption key separately
   const [encryptionKey, setEncryptionKey] = useState<string | null>(() => {
-    return localStorage.getItem('gsat_user_key');
+    return safeLocalStorage.getItem('gsat_user_key');
   });
 
   const [isSyncing, setIsSyncing] = useState(false);
+  // Never upload a device's cached snapshot until it has first been merged with
+  // the account's cloud state. Without this guard, opening an older device can
+  // overwrite a session that was just completed on another device.
+  const [isCloudStateReady, setIsCloudStateReady] = useState(false);
   const syncTimeoutRef = useRef<number | null>(null);
+  const syncInFlightRef = useRef(false);
+  const syncPendingRef = useRef(false);
+  const forceOverwriteRef = useRef(false);
+  const latestAppDataRef = useRef<AppData | null>(null);
+  const pendingStudySessionIdsRef = useRef(new Set(pendingStudySessionIds));
+  const isBackgroundPullingRef = useRef(false);
   const forceSyncRef = useRef(false);
   const authInvalidationHandledRef = useRef(false);
   const isHandlingPopStateRef = useRef(false);
@@ -322,12 +519,13 @@ const App: React.FC = () => {
 
   useEffect(() => {
     // Remove passwords stored by older versions. Supabase sessions handle authentication.
-    localStorage.removeItem('gsat_temp_pass');
+    safeLocalStorage.removeItem('gsat_temp_pass');
   }, []);
 
+    
   // Exam Selection Selection State
   const [selectedCategory, setSelectedCategory] = useState<string>(() => {
-    return EXAM_PRESETS.find(p => p.id === (localStorage.getItem('gsat_target_exam') || '116gsat'))?.category || 'gsat';
+    return EXAM_PRESETS.find(p => p.id === (safeLocalStorage.getItem('gsat_target_exam') || '116gsat'))?.category || 'gsat';
   });
 
   useEffect(() => {
@@ -338,41 +536,43 @@ const App: React.FC = () => {
   }, [targetExam]);
 
   useEffect(() => {
-    const handlePopState = (event: PopStateEvent) => {
+    const handlePopState = () => {
       isHandlingPopStateRef.current = true;
-      const page = event.state?.appPage;
-      setActivePage(isActivePage(page) ? page : getInitialActivePage());
-      setIsMenuOpen(false);
+      setRouteRevision(revision => revision + 1);
+      const route = getCurrentRoute();
+      setActivePage(route.page);
+      if (route.examId && route.examId !== targetExam) {
+        setTargetExam(route.examId);
+        const exam = EXAM_PRESETS.find(preset => preset.id === route.examId);
+        if (exam) setTargetDateStr(exam.date);
+      }
+      setIsAuthOpen(route.isAuth);
+      setAuthInitialMode((route.authMode || new URLSearchParams(window.location.search).get('authMode')) as typeof authInitialMode || undefined);
       setConfirmResetType(null);
     };
-
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [targetExam]);
 
   useEffect(() => {
-    if (isHandlingPopStateRef.current) {
-      isHandlingPopStateRef.current = false;
-      return;
-    }
-
-    const currentUrl = hasAuthCallbackParams()
-      ? `${window.location.pathname}${window.location.search}${window.location.hash}`
+    const callback = hasAuthCallbackParams();
+    const currentUrl = window.location.pathname + window.location.search + window.location.hash;
+    const routeUrl = callback ? currentUrl : isAuthOpen
+      ? getAuthRouteUrl(activePage, targetExam, authInitialMode)
       : getAppRouteUrl(activePage, targetExam);
-    const state = { appPage: activePage };
-
-    if (!hasInitializedHistoryRef.current || hasAuthCallbackParams()) {
-      window.history.replaceState(state, document.title, currentUrl);
-      hasInitializedHistoryRef.current = true;
-      return;
-    }
-
-    window.history.pushState(state, document.title, currentUrl);
-  }, [activePage, targetExam]);
+    const state = { ...window.history.state, appPage: activePage, examId: targetExam, auth: isAuthOpen };
+    const replace = !hasInitializedHistoryRef.current || isHandlingPopStateRef.current || callback;
+    isHandlingPopStateRef.current = false;
+    hasInitializedHistoryRef.current = true;
+    if (replace) window.history.replaceState(state, document.title, routeUrl);
+    else if (currentUrl !== routeUrl) window.history.pushState(state, document.title, routeUrl);
+  }, [activePage, targetExam, isAuthOpen, authInitialMode, routeRevision]);
 
   useEffect(() => {
     const examName = currentExam?.name || '大考';
-    const pageLabel = SEO_PAGE_LABELS[activePage];
+    const authMode = getAuthRouteMode();
+    const authLabels = { login: '登入帳號', signup: '註冊帳號', forgot: '忘記密碼', reset: '重設密碼' };
+    const pageLabel = isAuthOpen ? (authMode ? authLabels[authMode] : '帳號管理') : PAGE_ROUTES[activePage].label;
     const title = pageLabel
       ? `${pageLabel} - ${examName}倒數 | Focus Space`
       : `${examName}倒數 - 學測・會考・統測・分科讀書助手`;
@@ -381,11 +581,11 @@ const App: React.FC = () => {
     updateSeoMetadata({
       title,
       description,
-      canonicalPath: activePage === 'home' ? `/${targetExam}` : `/${targetExam}?page=${activePage}`,
+      canonicalPath: isAuthOpen ? buildAuthRoute(activePage, targetExam, authInitialMode) : buildAppRoute(activePage, targetExam),
       image: '/og-image.png',
       imageAlt: 'Focus Space 大考倒數：學測、會考、統測、分科測驗讀書計時助手',
     });
-  }, [activePage, currentExam, targetExam]);
+  }, [activePage, currentExam, targetExam, isAuthOpen, authInitialMode]);
 
   // Sync Logic (PUSH)
   useEffect(() => {
@@ -447,7 +647,7 @@ const App: React.FC = () => {
        const diffTime = examDate.getTime() - now.getTime();
        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-       const hasSeenReminder = localStorage.getItem('gsat_exam_reminder_seen_116');
+       const hasSeenReminder = safeLocalStorage.getItem('gsat_exam_reminder_seen_116');
        
        if (diffDays <= 14 && diffDays >= 0 && !hasSeenReminder) {
           const timer = setTimeout(() => {
@@ -463,13 +663,13 @@ const App: React.FC = () => {
 
   const handleCloseExamReminder = () => {
      setIsExamReminderOpen(false);
-     localStorage.setItem('gsat_exam_reminder_seen_116', 'true');
+     safeLocalStorage.setItem('gsat_exam_reminder_seen_116', 'true');
   };
 
   // Login Suggestion Logic
   useEffect(() => {
      if (!user) {
-        const hasSeenSuggestion = localStorage.getItem('gsat_login_suggestion_seen');
+        const hasSeenSuggestion = safeLocalStorage.getItem('gsat_login_suggestion_seen');
         if (!hasSeenSuggestion) {
            const timer = setTimeout(() => {
               if (!isAuthOpen && !isExamReminderOpen) {
@@ -483,13 +683,13 @@ const App: React.FC = () => {
 
   const handleCloseLoginSuggestion = () => {
      setIsLoginSuggestionOpen(false);
-     localStorage.setItem('gsat_login_suggestion_seen', 'true');
+     safeLocalStorage.setItem('gsat_login_suggestion_seen', 'true');
   };
 
   const handleSuggestionToAuth = () => {
      setIsLoginSuggestionOpen(false);
      setIsAuthOpen(true);
-     localStorage.setItem('gsat_login_suggestion_seen', 'true');
+     safeLocalStorage.setItem('gsat_login_suggestion_seen', 'true');
   };
 
   const handleAuthError = () => {
@@ -502,9 +702,11 @@ const App: React.FC = () => {
     void authService.logout();
     setUser(null);
     setEncryptionKey(null);
-    localStorage.removeItem('gsat_user_profile');
-    localStorage.removeItem('gsat_user_key');
-    localStorage.removeItem('gsat_temp_pass');
+    setIsCloudStateReady(false);
+    safeLocalStorage.removeItem('gsat_user_profile');
+    // Keep the cache owner ID after expiry. It is not an auth token, and is
+    // needed to prevent a different login from adopting this account's data.
+    safeLocalStorage.removeItem('gsat_temp_pass');
     setIsSyncing(false);
     setAuthInitialMode('login');
     setIsAuthOpen(true);
@@ -539,50 +741,113 @@ const App: React.FC = () => {
     };
   }, [user]);
 
+  // The server ledger is authoritative for all coin and ritual state. Refresh
+  // it on sign-in so stale or edited localStorage never wins a sync race.
+  useEffect(() => {
+    if (!user) return;
+    // A deployment may briefly serve a cached application shell beside a newer
+    // chunk. Do not crash the whole page if that older service object lacks the
+    // temple API; a refresh will load the matching hashed bundle.
+    const templeReader = (authService as typeof authService & {
+      getTempleState?: typeof authService.getTempleState;
+    }).getTempleState;
+    if (typeof templeReader !== 'function') {
+      console.warn('Temple service is unavailable in this cached application bundle.');
+      return;
+    }
+    let cancelled = false;
+    void templeReader.call(authService).then(result => {
+      if (!cancelled && result.success && result.data) applyTempleSyncData(result.data);
+      if (!cancelled && !result.success) setStudySyncError(result.message || '目前無法核對香火幣，請稍後檢查並補傳。');
+      if (!cancelled && !result.success && authService.isAuthError(result)) handleAuthError();
+    });
+    return () => { cancelled = true; };
+  }, [user, applyTempleSyncData]);
+
+  // Keep the newest render's complete state available to queued sync work. This
+  // prevents an older network request from writing a stale closure after a
+  // newer local edit has already happened.
+  latestAppDataRef.current = {
+    studyHistoryResetAt,
+    tasks, completedTaskIds, studySessions, challengeRecords, targetSchool, targetMajor,
+    targetDateStr, targetExam, tvetCategory, customDates, dailyGoal, streak,
+    playlists, activePlaylistId, incenseCoins, incenseRecords, templeState,
+    unlockedAchievementIds: getVerifiedAchievementIds({ tasks, completedTaskIds, studySessions, streak }), examChecklist, team, deletedCustomDateIds,
+    deletedPlaylistIds, deletedTrackIds, deletedTaskIds, syncMetadata,
+  };
+
   // Sync Logic (PUSH)
   const triggerSync = (immediate = false) => {
-    if (!user || !encryptionKey) return;
+    if (!user || !encryptionKey || !isCloudStateReady) return;
+    const skipRemoteMerge = forceOverwriteRef.current;
+    if (skipRemoteMerge) forceOverwriteRef.current = false;
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     
     const doSync = async () => {
        syncTimeoutRef.current = null;
+       if (syncInFlightRef.current) {
+         syncPendingRef.current = true;
+         if (skipRemoteMerge) forceOverwriteRef.current = true;
+         return;
+       }
+       const currentData = latestAppDataRef.current;
+       if (!currentData) return;
+       syncInFlightRef.current = true;
        setIsSyncing(true);
-       const currentData: AppData = {
-         tasks,
-         studySessions,
-         challengeRecords,
-         targetSchool,
-         targetMajor,
-         targetDateStr,
-         targetExam,
-         tvetCategory,
-         customDates,
-         dailyGoal,
-         streak,
-         playlists,
-         activePlaylistId,
-         incenseCoins,
-         incenseRecords,
-         templeState,
-         unlockedAchievementIds,
-         examChecklist,
-         team
-       };
-       
        try {
-         const res = await authService.syncData(user.email, '', currentData, encryptionKey);
+         const backupAtStart = readLogoutBackup(encryptionKey);
+         // Re-read immediately before a write. This closes the window between
+         // background polls and local edits, so records from another device are
+         // unioned into this upload instead of being overwritten.
+         const remoteRes = await authService.getData(user.email, '', encryptionKey);
+         if (!remoteRes.success) {
+           if (authService.isAuthError(remoteRes)) handleAuthError();
+           else console.error('Cloud read failed; upload deferred', remoteRes.message);
+           if (skipRemoteMerge) forceOverwriteRef.current = true;
+           return;
+         }
+         applyStudyHistoryReset(remoteRes.data?.studyHistoryResetAt);
+         const dataToSync = skipRemoteMerge
+           ? currentData
+           : mergeAppDataForSync(currentData, remoteRes.data);
+         const res = await authService.syncData(user.email, '', dataToSync, encryptionKey, remoteRes.stateRevision);
+         if (res.code === 'STATE_CONFLICT') {
+           if (skipRemoteMerge) forceOverwriteRef.current = true;
+           triggerSync();
+           return;
+         }
          if (!res.success && authService.isAuthError(res)) {
             handleAuthError();
          } else if (res.success) {
-            const logRes = await authService.syncStudyLogs(currentData.studySessions, team);
+            const pendingSessions = filterStudyHistory(dataToSync.studySessions, studyHistoryResetRef.current).filter(session => pendingStudySessionIdsRef.current.has(session.id));
+            const logRes = await authService.syncStudyLogs(pendingSessions, dataToSync.team, encryptionKey);
+            setStudySyncError(logRes.success ? '' : logRes.message || '專注紀錄尚未入帳，稍後將再嘗試補傳。');
+            if (logRes.syncedStudySessionIds?.length) {
+              const acknowledged = new Set(logRes.syncedStudySessionIds);
+              setPendingStudySessionIds(prev => prev.filter(id => !acknowledged.has(id)));
+              if (logRes.data) applyTempleSyncData(logRes.data as unknown as TempleSyncData);
+            }
             if (!logRes.success && authService.isAuthError(logRes)) {
                handleAuthError();
+            } else if (logRes.success) {
+               if (backupAtStart) removeLogoutBackup(encryptionKey, undefined, backupAtStart);
+               if (logRes.data) applyTempleSyncData(logRes.data as unknown as TempleSyncData);
+               if (pendingSessions.length > 0) {
+                 const sentIds = new Set(pendingSessions.map(session => session.id));
+                 setPendingStudySessionIds(prev => prev.filter(id => !sentIds.has(id)));
+               }
             }
          }
        } catch (e) {
          console.error("Sync failed", e);
+       } finally {
+         syncInFlightRef.current = false;
+         setIsSyncing(false);
+         if (syncPendingRef.current) {
+           syncPendingRef.current = false;
+           triggerSync(true);
+         }
        }
-       setIsSyncing(false);
     };
 
     if (immediate) {
@@ -592,43 +857,213 @@ const App: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    if (user && isCloudStateReady) triggerSync(true);
+  }, [user, isCloudStateReady, pendingStudySessionIds]);
+
+  useEffect(() => {
+    let retryAttempts = 0;
+    const reconnect = () => { retryAttempts = 0; triggerSync(true); };
+    const retryPending = () => {
+      if (navigator.onLine && document.visibilityState === 'visible' && pendingStudySessionIdsRef.current.size > 0 && retryAttempts < 5) {
+        retryAttempts++; triggerSync(true);
+      }
+    };
+    const refocus = () => { retryAttempts = 0; retryPending(); };
+    window.addEventListener('online', reconnect);
+    window.addEventListener('focus', refocus);
+    const retryTimer = window.setInterval(retryPending, 30000);
+    return () => {
+      window.removeEventListener('online', reconnect);
+      window.removeEventListener('focus', refocus);
+      window.clearInterval(retryTimer);
+    };
+  }, [user, encryptionKey, isCloudStateReady, pendingStudySessionIds]);
+
+  // Initial cloud hydration must happen before any persistence effect is allowed
+  // to push localStorage back to the server. Array fields are unioned so a study
+  // session added while this request is in flight is retained as well.
+  useEffect(() => {
+    if (!user || !encryptionKey) {
+      setIsCloudStateReady(false);
+      return;
+    }
+
+    let cancelled = false;
+    let hydrating = false;
+    let hydrated = false;
+    setIsCloudStateReady(false);
+
+    const hydrateCloudState = async () => {
+      if (cancelled || hydrating || hydrated) return;
+      hydrating = true;
+      try {
+        const [res, studyLogsRes] = await Promise.all([
+          authService.getData(user.email, '', encryptionKey),
+          authService.getStudySessions(),
+        ]);
+        if (cancelled) return;
+
+        if (!res.success || !studyLogsRes.success) {
+          if (authService.isAuthError(res)) handleAuthError();
+          else if (authService.isAuthError(studyLogsRes)) handleAuthError();
+          else console.error('Initial cloud synchronization failed', res.message || studyLogsRes.message);
+          return;
+        }
+
+        const cloud = res.data;
+        applyStudyHistoryReset(cloud?.studyHistoryResetAt);
+        if (cloud) {
+          setCompletedTaskIds(prev => mergeCompletedTaskIds({ tasks: [], completedTaskIds: prev }, cloud));
+          const mergedDeletedCustomDates = mergeDeletedIds(deletedCustomDateIds, cloud.deletedCustomDateIds);
+          const mergedDeletedTasks = mergeDeletedIds(deletedTaskIds, cloud.deletedTaskIds);
+          const mergedDeletedPlaylists = mergeDeletedIds(deletedPlaylistIds, cloud.deletedPlaylistIds);
+          const mergedDeletedTracks = mergeDeletedTracks(deletedTrackIds, cloud.deletedTrackIds);
+          setDeletedCustomDateIds(mergedDeletedCustomDates);
+          setDeletedTaskIds(mergedDeletedTasks);
+          setSyncMetadata(prev => mergeSyncMetadata(prev, cloud.syncMetadata));
+          setDeletedPlaylistIds(mergedDeletedPlaylists);
+          setDeletedTrackIds(mergedDeletedTracks);
+          if (cloud.tasks) setTasks(prev => mergeById(prev, cloud.tasks).filter(task => !mergedDeletedTasks.includes(task.id)));
+          if (cloud.challengeRecords) setChallengeRecords(prev => mergeById(prev, cloud.challengeRecords));
+          setCustomDates(prev => applyCustomDateDeletions(
+            mergeById(prev, cloud.customDates),
+            mergedDeletedCustomDates,
+          ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+          if (cloud.unlockedAchievementIds) {
+            setUnlockedAchievementIds(prev => Array.from(new Set([...prev, ...cloud.unlockedAchievementIds!])))
+          }
+
+          const remoteMetadata = cloud.syncMetadata || {};
+          const shouldUseCloudValue = (field: string) => !(field in remoteMetadata) || (remoteMetadata[field] || 0) > (syncMetadata[field] || 0);
+          if (cloud.team !== undefined && shouldUseCloudValue('team')) setTeam(cloud.team || '');
+          setPlaylists(prev => mergePlaylists(prev, cloud.playlists, mergedDeletedPlaylists, mergedDeletedTracks));
+          if (cloud.dailyGoal !== undefined && shouldUseCloudValue('dailyGoal')) setDailyGoal(cloud.dailyGoal);
+          if (cloud.streak) setStreak(cloud.streak);
+          if (cloud.examChecklist && shouldUseCloudValue('examChecklist')) setExamChecklist(cloud.examChecklist);
+          if (cloud.targetSchool !== undefined && shouldUseCloudValue('targetSchool')) setTargetSchool(cloud.targetSchool);
+          if (cloud.targetMajor !== undefined && shouldUseCloudValue('targetMajor')) setTargetMajor(cloud.targetMajor);
+          if (cloud.targetDateStr && shouldUseCloudValue('targetDateStr')) setTargetDateStr(cloud.targetExam === '115cap' ? EXAM_PRESETS.find(exam => exam.id === '117cap')!.date : cloud.targetDateStr);
+          if (cloud.targetExam && shouldUseCloudValue('targetExam')) setTargetExam(normalizeExamId(cloud.targetExam) || '116gsat');
+          if (cloud.tvetCategory !== undefined && shouldUseCloudValue('tvetCategory')) setTvetCategory(cloud.tvetCategory || '');
+          if (cloud.activePlaylistId) setActivePlaylistId(cloud.activePlaylistId);
+        }
+        const mergedSessions = filterStudyHistory(mergeById(
+          mergeById(studySessions, cloud?.studySessions),
+          studyLogsRes.sessions,
+        ), studyHistoryResetRef.current).sort((a, b) => a.timestamp - b.timestamp);
+        setStudySessions(prev => mergeById(prev, mergedSessions).sort((a, b) => a.timestamp - b.timestamp));
+
+        // Restore all available history, including older offline sessions.
+        const remotelyRecordedIds = new Set((studyLogsRes.sessions || []).map(session => session.id));
+        const sessionsToBackfill = mergedSessions
+          .filter(session => !remotelyRecordedIds.has(session.id))
+          .map(session => session.id);
+        setPendingStudySessionIds(prev => Array.from(new Set([
+          ...prev, ...sessionsToBackfill,
+        ])));
+
+        if (!cancelled) { hydrated = true; setIsCloudStateReady(true); }
+      } catch (error) {
+        if (!cancelled) console.error('Initial cloud synchronization failed', error);
+      } finally {
+        hydrating = false;
+      }
+    };
+
+    const retryHydration = () => { void hydrateCloudState(); };
+    window.addEventListener('online', retryHydration);
+    window.addEventListener('focus', retryHydration);
+    void hydrateCloudState();
+    return () => {
+      cancelled = true;
+      window.removeEventListener('online', retryHydration);
+      window.removeEventListener('focus', retryHydration);
+    };
+  }, [user, encryptionKey]);
+
   // Background Poll Logic (PULL) with MERGE
   useEffect(() => {
-     if (!user || !encryptionKey) return;
+     if (!user || !encryptionKey || !isCloudStateReady) return;
 
-     const pollInterval = setInterval(async () => {
-        if (isSyncing || syncTimeoutRef.current) return;
+     const pullRemoteState = async () => {
+        if (document.visibilityState !== 'visible' || isSyncing || syncTimeoutRef.current || isBackgroundPullingRef.current) return;
+        isBackgroundPullingRef.current = true;
 
         try {
-            const res = await authService.getData(user.email, '', encryptionKey);
+            const [res, studyLogsRes] = await Promise.all([
+              authService.getData(user.email, '', encryptionKey),
+              // Another device may upload an older offline session today. A
+              // completion-time watermark would skip it indefinitely.
+              authService.getStudySessions(),
+            ]);
             
-            if (!res.success && authService.isAuthError(res)) {
+            if ((!res.success && authService.isAuthError(res)) || (!studyLogsRes.success && authService.isAuthError(studyLogsRes))) {
                 handleAuthError();
-                clearInterval(pollInterval);
                 return;
+            }
+            if (res.success) applyStudyHistoryReset(res.data?.studyHistoryResetAt);
+            const templeRes = await authService.getTempleState();
+            if (templeRes.success && templeRes.data) applyTempleSyncData(templeRes.data);
+            else if (authService.isAuthError(templeRes)) { handleAuthError(); return; }
+
+            if (studyLogsRes.success) {
+                const recordedIds = new Set((studyLogsRes.sessions || []).map(session => session.id));
+                const underAwarded = new Set(templeRes.success && templeRes.data
+                  ? getTempleCoinDifferences(studyLogsRes.sessions || [], templeRes.data.incenseRecords || [])
+                    .filter(item => item.difference > 0).map(item => item.sessionId)
+                  : recordedIds);
+                setPendingStudySessionIds(prev => {
+                  const remaining = prev.filter(id => !recordedIds.has(id) || underAwarded.has(id));
+                  return remaining.length === prev.length ? prev : remaining;
+                });
+                setStudySessions(prev => {
+                    const merged = mergeById(prev, studyLogsRes.sessions);
+                    merged.sort((a, b) => a.timestamp - b.timestamp);
+                    return JSON.stringify(merged) !== JSON.stringify(prev) ? merged : prev;
+                });
             }
 
             if (res.success && res.data) {
                 const cloud = res.data;
+                setCompletedTaskIds(prev => {
+                  const merged = mergeCompletedTaskIds({ tasks: [], completedTaskIds: prev }, cloud);
+                  return haveSameIds(prev, merged) ? prev : merged;
+                });
+                const mergedDeletedCustomDates = mergeDeletedIds(deletedCustomDateIds, cloud.deletedCustomDateIds);
+                const mergedDeletedTasks = mergeDeletedIds(deletedTaskIds, cloud.deletedTaskIds);
+                const mergedDeletedPlaylists = mergeDeletedIds(deletedPlaylistIds, cloud.deletedPlaylistIds);
+                const mergedDeletedTracks = mergeDeletedTracks(deletedTrackIds, cloud.deletedTrackIds);
+                if (JSON.stringify(mergedDeletedCustomDates) !== JSON.stringify(deletedCustomDateIds)) {
+                    setDeletedCustomDateIds(mergedDeletedCustomDates);
+                }
+                if (JSON.stringify(mergedDeletedTasks) !== JSON.stringify(deletedTaskIds)) {
+                    setDeletedTaskIds(mergedDeletedTasks);
+                }
+                setSyncMetadata(prev => mergeSyncMetadata(prev, cloud.syncMetadata));
+                if (JSON.stringify(mergedDeletedPlaylists) !== JSON.stringify(deletedPlaylistIds)) {
+                    setDeletedPlaylistIds(mergedDeletedPlaylists);
+                }
+                if (JSON.stringify(mergedDeletedTracks) !== JSON.stringify(deletedTrackIds)) {
+                    setDeletedTrackIds(mergedDeletedTracks);
+                }
                 
                 // --- Merge Logic to prevent data loss ---
                 
                 // Tasks (Merge by ID)
                 if (cloud.tasks) {
                     setTasks(prev => {
-                       const merged = mergeById(prev, cloud.tasks);
+                       const merged = mergeById(prev, cloud.tasks).filter(task => !mergedDeletedTasks.includes(task.id));
                        return JSON.stringify(merged) !== JSON.stringify(prev) ? merged : prev;
                     });
                 }
                 
                 // Sessions (Merge by ID + Sort)
-                if (cloud.studySessions) {
-                    setStudySessions(prev => {
-                        const merged = mergeById(prev, cloud.studySessions);
-                        merged.sort((a, b) => a.timestamp - b.timestamp);
-                        return JSON.stringify(merged) !== JSON.stringify(prev) ? merged : prev;
-                    });
-                }
+                if (cloud.studySessions) setStudySessions(prev => {
+                    const merged = mergeById(prev, cloud.studySessions);
+                    merged.sort((a, b) => a.timestamp - b.timestamp);
+                    return JSON.stringify(merged) !== JSON.stringify(prev) ? merged : prev;
+                });
 
                 // Challenge Records (Merge by ID)
                 if (cloud.challengeRecords) {
@@ -639,183 +1074,232 @@ const App: React.FC = () => {
                 }
 
                 // Custom Dates (Merge by ID + Sort)
-                if (cloud.customDates) {
-                    setCustomDates(prev => {
-                        const merged = mergeById(prev, cloud.customDates);
-                        merged.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                        return JSON.stringify(merged) !== JSON.stringify(prev) ? merged : prev;
-                    });
-                }
+                setCustomDates(prev => {
+                    const merged = applyCustomDateDeletions(
+                        mergeById(prev, cloud.customDates),
+                        mergedDeletedCustomDates,
+                    );
+                    merged.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                    return JSON.stringify(merged) !== JSON.stringify(prev) ? merged : prev;
+                });
 
-                if (cloud.team !== undefined) {
+                const remoteMetadata = cloud.syncMetadata || {};
+                const shouldUseCloudValue = (field: string) => !(field in remoteMetadata) || (remoteMetadata[field] || 0) > (syncMetadata[field] || 0);
+                if (cloud.team !== undefined && shouldUseCloudValue('team')) {
                     setTeam(prev => prev !== cloud.team ? (cloud.team || '') : prev);
                 }
 
-                // Playlists (Direct overwrite from cloud to support track additions/deletions)
-                if (cloud.playlists) {
-                    setPlaylists(prev => {
-                        return JSON.stringify(cloud.playlists) !== JSON.stringify(prev) ? cloud.playlists : prev;
-                    });
-                }
+                // Merge playlists and their tracks so additions on another device persist.
+                setPlaylists(prev => {
+                    const merged = mergePlaylists(prev, cloud.playlists, mergedDeletedPlaylists, mergedDeletedTracks);
+                    return JSON.stringify(merged) !== JSON.stringify(prev) ? merged : prev;
+                });
 
                 // Single Value Fields (Cloud wins if different)
-                if (cloud.dailyGoal && cloud.dailyGoal !== dailyGoal) setDailyGoal(cloud.dailyGoal);
-                if (cloud.incenseCoins !== undefined && cloud.incenseCoins !== incenseCoins) setIncenseCoins(cloud.incenseCoins);
-                
-                if (cloud.incenseRecords) {
-                    setIncenseRecords(prev => {
-                        const merged = mergeById(prev, cloud.incenseRecords);
-                        merged.sort((a, b) => b.timestamp - a.timestamp);
-                        return JSON.stringify(merged) !== JSON.stringify(prev) ? merged : prev;
-                    });
-                }
-                
+                if (cloud.dailyGoal && cloud.dailyGoal !== dailyGoal && shouldUseCloudValue('dailyGoal')) setDailyGoal(cloud.dailyGoal);
                 // Streak (Complex object, use Cloud as master usually)
                 if (cloud.streak && JSON.stringify(cloud.streak) !== JSON.stringify(streak)) setStreak(cloud.streak);
-                if (cloud.templeState && JSON.stringify(cloud.templeState) !== JSON.stringify(templeState)) setTempleState(cloud.templeState);
 
                 if (cloud.unlockedAchievementIds) {
                     setUnlockedAchievementIds(prev => {
                         const merged = Array.from(new Set([...prev, ...(cloud.unlockedAchievementIds as string[])]));
                         if (JSON.stringify(merged) !== JSON.stringify(prev)) {
-                            localStorage.setItem('gsat_unlocked_achievements', JSON.stringify(merged));
+                            safeLocalStorage.setItem('gsat_unlocked_achievements', JSON.stringify(merged));
                             return merged;
                         }
                         return prev;
                     });
                 }
                 
-                if (cloud.examChecklist && JSON.stringify(cloud.examChecklist) !== JSON.stringify(examChecklist)) {
+                if (cloud.examChecklist && JSON.stringify(cloud.examChecklist) !== JSON.stringify(examChecklist) && shouldUseCloudValue('examChecklist')) {
                     setExamChecklist(cloud.examChecklist);
                 }
 
                 // Metadata
-                if (cloud.targetSchool && cloud.targetSchool !== targetSchool) setTargetSchool(cloud.targetSchool);
-                if (cloud.targetMajor && cloud.targetMajor !== targetMajor) setTargetMajor(cloud.targetMajor);
-                if (cloud.targetDateStr && cloud.targetDateStr !== targetDateStr) setTargetDateStr(cloud.targetDateStr);
-                if (cloud.targetExam && cloud.targetExam !== targetExam) setTargetExam(cloud.targetExam);
+                if (cloud.targetSchool !== undefined && cloud.targetSchool !== targetSchool && shouldUseCloudValue('targetSchool')) setTargetSchool(cloud.targetSchool);
+                if (cloud.targetMajor !== undefined && cloud.targetMajor !== targetMajor && shouldUseCloudValue('targetMajor')) setTargetMajor(cloud.targetMajor);
+                if (cloud.targetDateStr && cloud.targetDateStr !== targetDateStr && shouldUseCloudValue('targetDateStr')) setTargetDateStr(cloud.targetExam === '115cap' ? EXAM_PRESETS.find(exam => exam.id === '117cap')!.date : cloud.targetDateStr);
+                if (cloud.targetExam && cloud.targetExam !== targetExam && shouldUseCloudValue('targetExam')) setTargetExam(normalizeExamId(cloud.targetExam) || '116gsat');
             }
         } catch (e) {
             console.error("Polling error", e);
+        } finally {
+            isBackgroundPullingRef.current = false;
         }
-     }, 15000); 
+     };
 
-     return () => clearInterval(pollInterval);
-  }, [user, encryptionKey, isSyncing, dailyGoal, streak, targetSchool, targetMajor, targetDateStr, targetExam]); 
+     const handleVisibilityChange = () => {
+       if (document.visibilityState === 'visible') void pullRemoteState();
+     };
+     const handleWindowFocus = () => void pullRemoteState();
+     const pollInterval = window.setInterval(() => void pullRemoteState(), 15 * 60 * 1000);
+
+     document.addEventListener('visibilitychange', handleVisibilityChange);
+     window.addEventListener('focus', handleWindowFocus);
+
+     return () => {
+       window.clearInterval(pollInterval);
+       document.removeEventListener('visibilitychange', handleVisibilityChange);
+       window.removeEventListener('focus', handleWindowFocus);
+     };
+  }, [user, encryptionKey, isCloudStateReady, isSyncing, dailyGoal, streak, targetSchool, targetMajor, targetDateStr, targetExam, tvetCategory, team, examChecklist, deletedTaskIds, syncMetadata, deletedCustomDateIds, deletedPlaylistIds, deletedTrackIds]); 
   // Note: We removed list dependencies (tasks, sessions) from useEffect to prevent reset loops.
   // We use functional state updates (setTasks(prev => ...)) inside to access latest state.
 
   // Persistence Effects
   useEffect(() => { 
-    localStorage.setItem('gsat_tasks', JSON.stringify(tasks)); 
+    safeLocalStorage.setItem('gsat_tasks', JSON.stringify(tasks));
     triggerSync(forceSyncRef.current);
     if(forceSyncRef.current) forceSyncRef.current = false;
   }, [tasks]);
 
   useEffect(() => { 
-    localStorage.setItem('gsat_target_date', targetDateStr); 
+    safeLocalStorage.setItem('gsat_target_date', targetDateStr);
     triggerSync(); 
   }, [targetDateStr]);
 
   useEffect(() => { 
-    localStorage.setItem('gsat_target_exam', targetExam); 
+    safeLocalStorage.setItem('gsat_target_exam', targetExam);
     triggerSync(); 
   }, [targetExam]);
 
   useEffect(() => { 
-    localStorage.setItem('gsat_tvet_category', tvetCategory); 
+    safeLocalStorage.setItem('gsat_tvet_category', tvetCategory);
     triggerSync(); 
   }, [tvetCategory]);
 
   useEffect(() => { 
-    localStorage.setItem('gsat_target_school', targetSchool); 
+    safeLocalStorage.setItem('gsat_target_school', targetSchool);
     triggerSync(); 
   }, [targetSchool]);
 
   useEffect(() => { 
-    localStorage.setItem('gsat_target_major', targetMajor); 
+    safeLocalStorage.setItem('gsat_target_major', targetMajor);
     triggerSync(); 
   }, [targetMajor]);
 
-  useEffect(() => {
-    localStorage.setItem('gsat_team', team);
+  useEffect(() => { 
+    safeLocalStorage.setItem('gsat_team', team);
     triggerSync(true); // force sync
   }, [team]);
 
   useEffect(() => { 
-    localStorage.setItem('gsat_study_history', JSON.stringify(studySessions)); 
+    safeLocalStorage.setItem('gsat_study_history', JSON.stringify(studySessions));
     triggerSync(forceSyncRef.current);
     if(forceSyncRef.current) forceSyncRef.current = false;
   }, [studySessions]);
 
+  useEffect(() => {
+    safeLocalStorage.setItem('gsat_deleted_task_ids', JSON.stringify(deletedTaskIds));
+    triggerSync();
+  }, [deletedTaskIds]);
+  useEffect(() => {
+    safeLocalStorage.setItem('gsat_study_history_reset_at', JSON.stringify(studyHistoryResetAt));
+    triggerSync(true);
+    const allowedIds = new Set(studySessions.map(session => session.id));
+    setPendingStudySessionIds(prev => prev.filter(id => allowedIds.has(id)));
+  }, [studyHistoryResetAt]);
+
+  useEffect(() => {
+    safeLocalStorage.setItem('gsat_sync_metadata', JSON.stringify(syncMetadata));
+    triggerSync();
+  }, [syncMetadata]);
+
+  useEffect(() => {
+    safeLocalStorage.setItem('gsat_pending_study_session_ids', JSON.stringify(pendingStudySessionIds));
+    pendingStudySessionIdsRef.current = new Set(pendingStudySessionIds);
+  }, [pendingStudySessionIds]);
+
   useEffect(() => { 
-    localStorage.setItem('gsat_challenge_records', JSON.stringify(challengeRecords)); 
+    safeLocalStorage.setItem('gsat_challenge_records', JSON.stringify(challengeRecords));
     triggerSync(); 
   }, [challengeRecords]);
 
   useEffect(() => { 
-    localStorage.setItem('gsat_custom_dates', JSON.stringify(customDates)); 
+    safeLocalStorage.setItem('gsat_custom_dates', JSON.stringify(customDates));
     triggerSync(); 
   }, [customDates]);
 
-  useEffect(() => { 
-    localStorage.setItem('gsat_team', team); 
-    triggerSync(); 
-  }, [team]);
+  useEffect(() => {
+    safeLocalStorage.setItem('gsat_deleted_custom_date_ids', JSON.stringify(deletedCustomDateIds));
+    triggerSync();
+  }, [deletedCustomDateIds]);
 
   useEffect(() => { 
-    localStorage.setItem('gsat_daily_goal', dailyGoal.toString()); 
+    safeLocalStorage.setItem('gsat_daily_goal', dailyGoal.toString());
     triggerSync(); 
   }, [dailyGoal]);
 
   useEffect(() => { 
-    localStorage.setItem('gsat_streak', JSON.stringify(streak)); 
+    safeLocalStorage.setItem('gsat_streak', JSON.stringify(streak));
     triggerSync(); 
   }, [streak]);
 
   useEffect(() => { 
-    localStorage.setItem('gsat_playlists', JSON.stringify(playlists)); 
+    safeLocalStorage.setItem('gsat_playlists', JSON.stringify(playlists));
     triggerSync(); 
   }, [playlists]);
 
+  useEffect(() => {
+    safeLocalStorage.setItem('gsat_deleted_playlist_ids', JSON.stringify(deletedPlaylistIds));
+    triggerSync();
+  }, [deletedPlaylistIds]);
+
+  useEffect(() => {
+    safeLocalStorage.setItem('gsat_deleted_track_ids', JSON.stringify(deletedTrackIds));
+    triggerSync();
+  }, [deletedTrackIds]);
+
   useEffect(() => { 
-    localStorage.setItem('gsat_active_playlist_id', activePlaylistId); 
+    safeLocalStorage.setItem('gsat_active_playlist_id', activePlaylistId);
     triggerSync(); 
   }, [activePlaylistId]);
 
   useEffect(() => { 
-    localStorage.setItem('gsat_incense_coins', incenseCoins.toString()); 
+    safeLocalStorage.setItem('gsat_incense_coins', incenseCoins.toString());
     triggerSync(); 
   }, [incenseCoins]);
 
   useEffect(() => { 
-    localStorage.setItem('gsat_incense_records', JSON.stringify(incenseRecords)); 
+    safeLocalStorage.setItem('gsat_incense_records', JSON.stringify(incenseRecords));
     triggerSync(); 
   }, [incenseRecords]);
 
   useEffect(() => { 
-    localStorage.setItem('gsat_temple_state', JSON.stringify(templeState)); 
+    safeLocalStorage.setItem('gsat_temple_state', JSON.stringify(templeState));
     triggerSync(); 
   }, [templeState]);
 
   useEffect(() => {
-    localStorage.setItem('gsat_exam_checklist', JSON.stringify(examChecklist));
+    safeLocalStorage.setItem('gsat_exam_checklist', JSON.stringify(examChecklist));
     triggerSync();
   }, [examChecklist]);
 
   useEffect(() => {
-    localStorage.setItem('gsat_unlocked_achievements', JSON.stringify(unlockedAchievementIds));
+    safeLocalStorage.setItem('gsat_unlocked_achievements', JSON.stringify(unlockedAchievementIds));
     unlockedAchievementIdsRef.current = new Set(unlockedAchievementIds);
     triggerSync();
   }, [unlockedAchievementIds]);
 
-  useEffect(() => { if(user) localStorage.setItem('gsat_user_profile', JSON.stringify(user)); }, [user]);
-  useEffect(() => { if(encryptionKey) localStorage.setItem('gsat_user_key', encryptionKey); }, [encryptionKey]);
+  useEffect(() => {
+    setCompletedTaskIds(previous => {
+      const merged = mergeCompletedTaskIds({ tasks, completedTaskIds: previous });
+      return haveSameIds(previous, merged) ? previous : merged;
+    });
+  }, [tasks]);
+
+  useEffect(() => {
+    safeLocalStorage.setItem('gsat_completed_task_ids', JSON.stringify(completedTaskIds));
+    triggerSync();
+  }, [completedTaskIds]);
+
+  useEffect(() => { if(user) safeLocalStorage.setItem('gsat_user_profile', JSON.stringify(user)); }, [user]);
+  useEffect(() => { if(encryptionKey) safeLocalStorage.setItem('gsat_user_key', encryptionKey); }, [encryptionKey]);
 
   // Streak Calculation Logic
   const checkStreakUpdate = (currentSessions: StudySession[]) => {
       const now = new Date();
-      const todayStr = now.toISOString().split('T')[0];
+      const todayStr = getLocalDateKey(now.getTime());
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
       const todayEnd = todayStart + 86400000;
 
@@ -827,7 +1311,7 @@ const App: React.FC = () => {
           if (streak.lastDate !== todayStr) {
               const yesterday = new Date(now);
               yesterday.setDate(yesterday.getDate() - 1);
-              const yesterdayStr = yesterday.toISOString().split('T')[0];
+              const yesterdayStr = getLocalDateKey(yesterday.getTime());
 
               let newCurrent = 1;
               if (streak.lastDate === yesterdayStr) {
@@ -849,62 +1333,119 @@ const App: React.FC = () => {
   };
 
   const handleSaveSession = (sessionData: Omit<StudySession, 'id'>) => {
-    const newSession = { ...sessionData, id: Date.now().toString() };
+    const newSession = { ...sessionData, id: createSessionId() };
     const updatedSessions = [...studySessions, newSession];
-    setStudySessions(updatedSessions);
+    safeLocalStorage.setItem('gsat_study_history', JSON.stringify(updatedSessions));
+    setStudySessions(prev => [...prev, newSession]);
     
-    // Add incense coins (1 minute = 1 coin)
-    if (sessionData.durationMinutes > 0) {
-      setIncenseCoins(prev => prev + sessionData.durationMinutes);
-      setIncenseRecords(prev => [{
-        id: Date.now().toString(),
-        amount: sessionData.durationMinutes,
-        reason: `專注學習 (${sessionData.subjectName})`,
-        timestamp: Date.now()
-      }, ...prev]);
-    }
-
     checkStreakUpdate(updatedSessions);
 
     if (user) {
+       // Persist the retry marker before starting the request so closing the
+       // device while offline cannot leave an untracked study session.
+       pendingStudySessionIdsRef.current.add(newSession.id);
+       safeLocalStorage.setItem('gsat_pending_study_session_ids', JSON.stringify([...pendingStudySessionIdsRef.current]));
+       setPendingStudySessionIds(prev => Array.from(new Set([...prev, newSession.id])));
        authService.logSession(user.email, '', newSession, team)
          .then(res => {
+            setStudySyncError(res.success ? '' : res.message || '這筆專注尚未入帳，會在連線恢復後補傳。');
+            if (res.syncedStudySessionIds?.includes(newSession.id)) {
+              if (res.data) applyTempleSyncData(res.data as unknown as TempleSyncData);
+              setPendingStudySessionIds(prev => prev.filter(id => id !== newSession.id));
+            }
             if (!res.success && authService.isAuthError(res)) {
                handleAuthError();
+            } else if (res.success) {
+               // A study-log write can succeed even when the optional temple
+               // ledger is not installed.  Do not retry an already persisted
+               // session just because that auxiliary response is absent.
+               if (res.data) applyTempleSyncData(res.data as unknown as TempleSyncData);
+               setPendingStudySessionIds(prev => prev.filter(id => id !== newSession.id));
+            } else {
+               if (!res.syncedStudySessionIds?.includes(newSession.id)) setPendingStudySessionIds(prev => Array.from(new Set([...prev, newSession.id])));
             }
          })
-         .catch(err => console.error("Log session error", err));
+         .catch(err => {
+           console.error("Log session error", err);
+           setStudySyncError('這筆專注尚未入帳，會稍後自動補傳；也可到文昌廟檢查並補傳。');
+           setPendingStudySessionIds(prev => Array.from(new Set([...prev, newSession.id])));
+         });
     }
   };
 
   const handleSaveChallenge = (record: Omit<ChallengeRecord, 'id'>) => {
-    setChallengeRecords(prev => [...prev, { ...record, id: Date.now().toString() }]);
+    setChallengeRecords(prev => [...prev, { ...record, id: Date.now().toString(), updatedAt: Date.now() }]);
   };
   
   const executeReset = () => {
     forceSyncRef.current = true;
     if (confirmResetType === 'tasks') {
-        setTasks([]);
+        setSyncedTasks([]);
     } else if (confirmResetType === 'sessions') {
+        try { applyStudyHistoryReset(Date.now()); }
+        catch (error) { console.error('History reset was not saved; reset cancelled', error); return; }
+        setPendingStudySessionIds([]);
         setStudySessions([]);
     } else if (confirmResetType === 'dates') {
-        setCustomDates([]);
+        setCustomDates(prev => {
+          setDeletedCustomDateIds(deleted => mergeDeletedIds(deleted, prev.map(date => date.id)));
+          return [];
+        });
     }
     setConfirmResetType(null);
     setIsSettingsOpen(false);
   };
 
   const handleLoginSuccess = (loggedInUser: User, cloudData?: AppData, key?: string) => {
+    const storageVersion = localStorageController.getFailureVersion();
+    const previousOwner = safeLocalStorage.getItem('gsat_user_key');
+    if (previousOwner && key && previousOwner !== key) {
+      setIsCloudStateReady(false);
+      if (syncTimeoutRef.current) { clearTimeout(syncTimeoutRef.current); syncTimeoutRef.current = null; }
+      try {
+        const existing = readLogoutBackup(previousOwner);
+        const snapshot = latestAppDataRef.current || getCurrentData();
+        saveLogoutBackup(previousOwner, existing ? mergeAppDataForSync(snapshot, existing.data) : snapshot,
+          Array.from(new Set([...pendingStudySessionIdsRef.current, ...(existing?.pendingSessionIds || [])])));
+      } catch {
+        setUser(null); setEncryptionKey(null);
+        safeLocalStorage.removeItem('gsat_user_profile');
+        void authService.logout();
+        window.alert('前一個帳號的資料尚無法安全備份，請保留此頁面，稍後再切換帳號。');
+        return;
+      }
+      // Load the newly authenticated account from a clean cache. The former
+      // owner's backup stays under its own ID until that owner signs in again.
+      ACCOUNT_STORAGE_KEYS.filter(storageKey => !['gsat_user_key', 'gsat_user_profile'].includes(storageKey))
+        .forEach(storageKey => safeLocalStorage.removeItem(storageKey));
+      if (localStorageController.getFailureVersion() !== storageVersion) {
+        setUser(null); setEncryptionKey(null);
+        void authService.logout();
+        window.alert('本機資料尚無法安全切換，請保留此頁面，稍後再試。');
+        return;
+      }
+      safeLocalStorage.setItem('gsat_user_profile', JSON.stringify(loggedInUser));
+      safeLocalStorage.setItem('gsat_user_key', key);
+      if (localStorageController.getFailureVersion() !== storageVersion) {
+        setUser(null); setEncryptionKey(null);
+        void authService.logout();
+        window.alert('帳號資料尚無法保存，請保留此頁面，稍後再試。');
+        return;
+      }
+      window.location.replace(buildAppRoute(activePage, cloudData?.targetExam || '116gsat'));
+      return;
+    }
+    const backup = key ? readLogoutBackup(key) : null;
     authInvalidationHandledRef.current = false;
     setUser(loggedInUser);
-    localStorage.setItem('gsat_user_profile', JSON.stringify(loggedInUser));
+    safeLocalStorage.setItem('gsat_user_profile', JSON.stringify(loggedInUser));
     if (key) {
       setEncryptionKey(key);
-      localStorage.setItem('gsat_user_key', key);
+      safeLocalStorage.setItem('gsat_user_key', key);
     }
     
     // Prepare remote data (empty if undefined) to allow merging with local data
-    const remoteData = cloudData || {
+    const remoteData = (backup ? mergeAppDataForSync(backup.data, cloudData) : cloudData) || {
         tasks: [],
         studySessions: [],
         challengeRecords: [],
@@ -923,144 +1464,256 @@ const App: React.FC = () => {
     };
 
     // Merge logic: Combine local and remote, preferring local updates but including remote additions
-    const mergedTasks = mergeById(tasks, remoteData.tasks);
-    const mergedSessions = mergeById(studySessions, remoteData.studySessions);
+    const mergedDeletedTasks = mergeDeletedIds(deletedTaskIds, remoteData.deletedTaskIds);
+    const mergedTasks = mergeById(tasks, remoteData.tasks).filter(task => !mergedDeletedTasks.includes(task.id));
+    const mergedCompletedTaskIds = mergeCompletedTaskIds({ tasks, completedTaskIds }, remoteData);
+    const resetAt = mergeStudyHistoryReset(previousOwner === key ? studyHistoryResetRef.current : 0, remoteData.studyHistoryResetAt);
+    safeLocalStorage.setItem('gsat_study_history_reset_at', JSON.stringify(resetAt));
+    const mergedSessions = filterStudyHistory(mergeById(studySessions, remoteData.studySessions), resetAt);
     mergedSessions.sort((a, b) => a.timestamp - b.timestamp);
     
     const mergedChallenges = mergeById(challengeRecords, remoteData.challengeRecords);
     
-    const mergedCustomDates = mergeById(customDates, remoteData.customDates);
+    const mergedDeletedCustomDates = mergeDeletedIds(deletedCustomDateIds, remoteData.deletedCustomDateIds);
+    const mergedDeletedPlaylists = mergeDeletedIds(deletedPlaylistIds, remoteData.deletedPlaylistIds);
+    const mergedDeletedTracks = mergeDeletedTracks(deletedTrackIds, remoteData.deletedTrackIds);
+    const mergedSyncMetadata = mergeSyncMetadata(syncMetadata, remoteData.syncMetadata);
+    const mergedCustomDates = applyCustomDateDeletions(
+      mergeById(customDates, remoteData.customDates),
+      mergedDeletedCustomDates,
+    );
     mergedCustomDates.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    const mergedPlaylists = (remoteData.playlists && remoteData.playlists.length > 0) ? remoteData.playlists : playlists;
+    const mergedPlaylists = mergePlaylists(playlists, remoteData.playlists, mergedDeletedPlaylists, mergedDeletedTracks);
     
     const mergedIncenseRecords = mergeById(incenseRecords, remoteData.incenseRecords);
     mergedIncenseRecords.sort((a, b) => b.timestamp - a.timestamp);
 
     // Save merged state to local storage
-    localStorage.setItem('gsat_tasks', JSON.stringify(mergedTasks));
-    localStorage.setItem('gsat_study_history', JSON.stringify(mergedSessions));
-    localStorage.setItem('gsat_challenge_records', JSON.stringify(mergedChallenges));
-    localStorage.setItem('gsat_custom_dates', JSON.stringify(mergedCustomDates));
-    localStorage.setItem('gsat_playlists', JSON.stringify(mergedPlaylists));
-    localStorage.setItem('gsat_incense_records', JSON.stringify(mergedIncenseRecords));
+    safeLocalStorage.setItem('gsat_tasks', JSON.stringify(mergedTasks));
+    safeLocalStorage.setItem('gsat_completed_task_ids', JSON.stringify(mergedCompletedTaskIds));
+    safeLocalStorage.setItem('gsat_deleted_task_ids', JSON.stringify(mergedDeletedTasks));
+    safeLocalStorage.setItem('gsat_sync_metadata', JSON.stringify(mergedSyncMetadata));
+    safeLocalStorage.setItem('gsat_study_history', JSON.stringify(mergedSessions));
+    safeLocalStorage.setItem('gsat_challenge_records', JSON.stringify(mergedChallenges));
+    safeLocalStorage.setItem('gsat_custom_dates', JSON.stringify(mergedCustomDates));
+    safeLocalStorage.setItem('gsat_deleted_custom_date_ids', JSON.stringify(mergedDeletedCustomDates));
+    safeLocalStorage.setItem('gsat_playlists', JSON.stringify(mergedPlaylists));
+    safeLocalStorage.setItem('gsat_deleted_playlist_ids', JSON.stringify(mergedDeletedPlaylists));
+    safeLocalStorage.setItem('gsat_deleted_track_ids', JSON.stringify(mergedDeletedTracks));
+    safeLocalStorage.setItem('gsat_incense_records', JSON.stringify(mergedIncenseRecords));
+    if (backup) {
+      safeLocalStorage.setItem('gsat_pending_study_session_ids', JSON.stringify(Array.from(new Set([
+        ...pendingStudySessionIdsRef.current, ...backup.pendingSessionIds,
+      ])).filter(id => mergedSessions.some(session => session.id === id))));
+      safeLocalStorage.setItem('gsat_exam_checklist', JSON.stringify(remoteData.examChecklist || {}));
+    }
     
     // For configuration values, prioritize remote if present, otherwise keep local (e.g. upload local to new account)
-    if (remoteData.targetSchool) localStorage.setItem('gsat_target_school', remoteData.targetSchool);
-    if (remoteData.targetMajor) localStorage.setItem('gsat_target_major', remoteData.targetMajor);
-    if (remoteData.targetDateStr) localStorage.setItem('gsat_target_date', remoteData.targetDateStr);
-    if (remoteData.targetExam) localStorage.setItem('gsat_target_exam', remoteData.targetExam);
-    if (remoteData.tvetCategory) localStorage.setItem('gsat_tvet_category', remoteData.tvetCategory);
-    if (remoteData.dailyGoal) localStorage.setItem('gsat_daily_goal', remoteData.dailyGoal.toString());
-    if (remoteData.streak && remoteData.streak.lastDate) localStorage.setItem('gsat_streak', JSON.stringify(remoteData.streak));
-    if (remoteData.activePlaylistId) localStorage.setItem('gsat_active_playlist_id', remoteData.activePlaylistId);
-    if (remoteData.incenseCoins !== undefined) localStorage.setItem('gsat_incense_coins', remoteData.incenseCoins.toString());
-    if (remoteData.templeState) localStorage.setItem('gsat_temple_state', JSON.stringify(remoteData.templeState));
-    if (remoteData.team !== undefined) localStorage.setItem('gsat_team', remoteData.team);
+    if (remoteData.targetSchool !== undefined) safeLocalStorage.setItem('gsat_target_school', remoteData.targetSchool);
+    if (remoteData.targetMajor !== undefined) safeLocalStorage.setItem('gsat_target_major', remoteData.targetMajor);
+    if (remoteData.targetDateStr) safeLocalStorage.setItem('gsat_target_date', remoteData.targetDateStr);
+    if (remoteData.targetExam) safeLocalStorage.setItem('gsat_target_exam', remoteData.targetExam);
+    if (remoteData.tvetCategory) safeLocalStorage.setItem('gsat_tvet_category', remoteData.tvetCategory);
+    if (remoteData.dailyGoal) safeLocalStorage.setItem('gsat_daily_goal', remoteData.dailyGoal.toString());
+    if (remoteData.streak && remoteData.streak.lastDate) safeLocalStorage.setItem('gsat_streak', JSON.stringify(remoteData.streak));
+    if (remoteData.activePlaylistId) safeLocalStorage.setItem('gsat_active_playlist_id', remoteData.activePlaylistId);
+    if (remoteData.incenseCoins !== undefined) safeLocalStorage.setItem('gsat_incense_coins', remoteData.incenseCoins.toString());
+    if (remoteData.templeState) safeLocalStorage.setItem('gsat_temple_state', JSON.stringify(remoteData.templeState));
+    if (remoteData.team !== undefined) safeLocalStorage.setItem('gsat_team', remoteData.team);
 
     // Set welcome flag for next load
-    sessionStorage.setItem('gsat_welcome_pending', 'true');
+    try { sessionStorage.setItem('gsat_welcome_pending', 'true'); } catch { /* Optional welcome notice. */ }
 
-    // Force reload to pick up new state, trigger effects, and push sync to cloud
-    window.location.reload(); 
+    if (localStorageController.getFailureVersion() !== storageVersion) {
+      // Keep merged data in the running app. Reloading would discard writes
+      // that only survived in memory while browser storage was full.
+      studyHistoryResetRef.current = resetAt;
+      setStudyHistoryResetAt(resetAt);
+      setTasks(mergedTasks); setStudySessions(mergedSessions);
+      setCompletedTaskIds(mergedCompletedTaskIds);
+      setChallengeRecords(mergedChallenges); setCustomDates(mergedCustomDates);
+      setDeletedTaskIds(mergedDeletedTasks); setDeletedCustomDateIds(mergedDeletedCustomDates);
+      setSyncMetadata(mergedSyncMetadata); setPlaylists(mergedPlaylists);
+      setDeletedPlaylistIds(mergedDeletedPlaylists); setDeletedTrackIds(mergedDeletedTracks);
+      setPendingStudySessionIds(readStoredJson<string[]>('gsat_pending_study_session_ids', []));
+      setTargetSchool(remoteData.targetSchool ?? targetSchool);
+      setTargetMajor(remoteData.targetMajor ?? targetMajor);
+      setTargetDateStr(remoteData.targetDateStr || targetDateStr);
+      setTargetExam(remoteData.targetExam || targetExam);
+      setTvetCategory(remoteData.tvetCategory || '');
+      setDailyGoal(remoteData.dailyGoal || dailyGoal);
+      setStreak(remoteData.streak || streak); setTeam(remoteData.team || '');
+      setActivePlaylistId(remoteData.activePlaylistId || activePlaylistId);
+      setExamChecklist(remoteData.examChecklist || examChecklist);
+      setIsAuthOpen(false);
+      return;
+    }
+
+    // Reload the requested page with the merged account state.
+    const loginExam = remoteData.targetExam || targetExam;
+    window.location.replace(buildAppRoute(activePage, loginExam));
   };
 
-  const handleLogout = async () => {
+  const handleTempleRitual = useCallback(async (ritualType: 'lamp' | 'fortune' | 'ticket') => {
+    if (!user) throw new Error('請先登入，才能使用香火幣。');
+    if (!isTempleVerified) throw new Error('點數尚未完成核對，請先到學習歷程檢查同步。');
+    const templeWriter = (authService as typeof authService & {
+      performTempleRitual?: typeof authService.performTempleRitual;
+    }).performTempleRitual;
+    if (typeof templeWriter !== 'function') throw new Error('頁面正在更新，請重新整理後再進行儀式。');
+    const result = await templeWriter.call(authService, createSessionId(), ritualType);
+    if (!result.success || !result.data) throw new Error(result.message || '儀式執行失敗');
+    applyTempleSyncData(result.data);
+    if (ritualType === 'fortune') {
+      const latest = (result.data.templeState?.fortunes as any[])?.[0];
+      const index = Number.isInteger(latest?.index) ? Math.abs(latest.index) % FORTUNES.length : 0;
+      return FORTUNES[index];
+    }
+  }, [user, isTempleVerified, applyTempleSyncData]);
+
+  const prepareLogout = (): boolean => {
+    try {
+      if (!encryptionKey || !latestAppDataRef.current) throw new Error('Missing account snapshot');
+      saveLogoutBackup(encryptionKey, latestAppDataRef.current, Array.from(pendingStudySessionIdsRef.current));
+      return true;
+    } catch (error) {
+      console.error('Logout backup failed', error);
+      window.alert('尚未同步的資料無法安全備份，已停止登出。請保留此頁面，稍後再試。');
+      return false;
+    }
+  };
+
+  const handleLogout = async (discardData = false) => {
+    if (!discardData && !prepareLogout()) return;
+    if (discardData && encryptionKey) removeLogoutBackup(encryptionKey);
     if (syncTimeoutRef.current) {
       clearTimeout(syncTimeoutRef.current);
       syncTimeoutRef.current = null;
     }
 
     await authService.logout();
-    const keysToRemove = [
-      'gsat_user_profile',
-      'gsat_user_key',
-      'gsat_temp_pass',
-      'gsat_tasks',
-      'gsat_study_history',
-      'gsat_challenge_records',
-      'gsat_target_school',
-      'gsat_target_major',
-      'gsat_target_date',
-      'gsat_target_exam',
-      'gsat_custom_dates',
-      'gsat_daily_goal',
-      'gsat_streak',
-      'gsat_playlists',
-      'gsat_active_playlist_id',
-      'gsat_incense_coins',
-      'gsat_incense_records',
-      'gsat_temple_state',
-      'gsat_team',
-      'gsat_login_suggestion_seen',
-      'gsat_exam_reminder_seen_116'
-    ];
+    const keysToRemove = ACCOUNT_STORAGE_KEYS;
     
-    keysToRemove.forEach(key => localStorage.removeItem(key));
+    keysToRemove.forEach(key => safeLocalStorage.removeItem(key));
     
     setUser(null);
     setEncryptionKey(null);
+    setIsCloudStateReady(false);
     
     window.location.reload();
   };
 
-  // Timer Interval
-  useEffect(() => {
-    let timeoutId: number | undefined;
-
-    const updateTimeLeft = () => {
-      const now = new Date();
-      setTimeLeft(getTimeLeft(targetDateStr, now));
-      const nextTickDelay = 1000 - (now.getTime() % 1000) + 12;
-      timeoutId = window.setTimeout(updateTimeLeft, nextTickDelay);
-    };
-
-    updateTimeLeft();
-    return () => {
-      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
-    };
-  }, [targetDateStr]);
-
   const getCurrentData = (): AppData => ({
+    studyHistoryResetAt,
     tasks,
+    completedTaskIds,
     studySessions,
     challengeRecords,
     targetSchool,
     targetMajor,
     targetDateStr,
+    targetExam,
+    tvetCategory,
     customDates,
+    deletedCustomDateIds,
     dailyGoal,
     streak,
     playlists,
+    deletedPlaylistIds,
+    deletedTrackIds,
     activePlaylistId,
     incenseCoins,
     incenseRecords,
     templeState,
-    unlockedAchievementIds,
-    examChecklist
+    unlockedAchievementIds: getVerifiedAchievementIds({ tasks, completedTaskIds, studySessions, streak }),
+    examChecklist,
+    team,
   });
+
+  const handleCheckStudySync = async (): Promise<string> => {
+    if (!user || !encryptionKey) throw new Error('請先登入，才能核對這個裝置與雲端的紀錄。');
+    const [cloud, logs] = await Promise.all([
+      authService.getData(user.email, '', encryptionKey),
+      authService.getStudySessions(),
+    ]);
+    if (!cloud.success || !logs.success) throw new Error(cloud.message || logs.message || '目前無法讀取雲端，請稍後再檢查。');
+    applyStudyHistoryReset(cloud.data?.studyHistoryResetAt);
+    const merged = filterStudyHistory(mergeById(
+      mergeById(latestAppDataRef.current?.studySessions || studySessions, cloud.data?.studySessions), logs.sessions,
+    ), studyHistoryResetRef.current);
+    setStudySessions(prev => mergeById(prev, merged).sort((a, b) => a.timestamp - b.timestamp));
+    const recorded = new Set((logs.sessions || []).map(session => session.id));
+    const retry = merged.filter(session =>
+      !recorded.has(session.id) || pendingStudySessionIdsRef.current.has(session.id));
+    setPendingStudySessionIds(prev => Array.from(new Set([
+      ...prev, ...retry.map(session => session.id),
+    ])));
+    // Await the actual ledger writes; enqueuing alone is not a completed repair.
+    const repair = retry.length ? await authService.syncStudyLogs(retry, team, encryptionKey) : null;
+    const acknowledged = new Set(repair?.syncedStudySessionIds || []);
+    if (acknowledged.size) {
+      setPendingStudySessionIds(prev => prev.filter(id => !acknowledged.has(id)));
+      if (repair?.data) applyTempleSyncData(repair.data as unknown as TempleSyncData);
+    }
+    const remaining = retry.filter(session => !acknowledged.has(session.id));
+    setStudySyncError(repair && !repair.success ? repair.message || '部分紀錄尚未入帳，請查看核對結果。' : '');
+    const repairedStreak = reconcileStudyStreak(merged, dailyGoal, streak);
+    setStreak(repairedStreak);
+    const verified = getVerifiedAchievementIds({ tasks, completedTaskIds, studySessions: merged, streak: repairedStreak });
+    const restored = verified.filter(id => !unlockedAchievementIdsRef.current.has(id)).length;
+    const temple = await authService.getTempleState();
+    if (temple.success && temple.data) applyTempleSyncData(temple.data);
+    const durableSessions = mergeById(logs.sessions || [], retry.filter(session => acknowledged.has(session.id)));
+    const coinAudit = temple.success && temple.data
+      ? reconcileTempleCoins(durableSessions, temple.data.incenseRecords || [], temple.data.incenseCoins) : null;
+    const coinDifferences = temple.success && temple.data
+      ? getTempleCoinDifferences(durableSessions, temple.data.incenseRecords || []) : [];
+    const minutes = merged.reduce((total, session) => total + session.durationMinutes, 0);
+    return [
+      `已合併本機與雲端：共 ${merged.length} 筆，${Math.floor(minutes / 60)} 小時 ${minutes % 60} 分鐘。`,
+      `已在專注帳本入帳 ${merged.filter(session => recorded.has(session.id) || acknowledged.has(session.id)).length} 筆；本次補傳成功 ${acknowledged.size} 筆；${remaining.length} 筆仍待處理。`,
+      repair && !repair.success ? `補傳未完成：${repair.message || '請稍後重試，或核對是否與既有紀錄時段重疊。'}` : '',
+      `依合併後紀錄重新核對獎章，本次符合補發條件 ${restored} 枚。`,
+      temple.success && temple.data ? `文昌可用香火幣：${temple.data.incenseCoins} 枚（已扣除帳本中的儀式支出）。` : `文昌點數尚無法確認：${temple.message || '請稍後再試'}。`,
+      coinAudit ? `香火幣核對：累計入帳 ${coinAudit.minutes} 分鐘 → ${coinAudit.earned} 枚，祈福已花費 ${coinAudit.spent} 枚，可用 ${coinAudit.balance} 枚。${coinAudit.matches ? '帳本一致。' : '目前快照不一致，若仍有同步進行，請完成後再次檢查；持續不一致請聯絡支援。'}` : '',
+      coinAudit && coinAudit.minutes > coinAudit.earned ? `已入帳分鐘與發幣收入相差 ${coinAudit.minutes - coinAudit.earned} 枚；這是發幣金額差異，不是待補傳筆數。若重新檢查後仍存在，需管理員更新舊紀錄差額修復。` : '',
+      ...coinDifferences.slice(0, 5).map(item => `差異紀錄：${new Date(item.timestamp).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })} ${item.subjectName}，${item.minutes} 分鐘，已發 ${item.awarded} 枚，${item.difference > 0 ? '少發' : '多記'} ${Math.abs(item.difference)} 枚（紀錄 ${item.sessionId}）。`),
+      coinDifferences.length > 5 ? `另有 ${coinDifferences.length - 5} 筆金額差異，請保留紀錄供核對。` : '',
+      '每筆專注以完整分鐘計算，未滿 1 分鐘不入帳；休息不發幣。清空學習歷程僅隱藏舊紀錄，不會重新發幣或退還祈福支出。',
+      '請在另一台裝置也開啟網站並檢查同步，才能核對仍只存在那台裝置的紀錄。',
+    ].filter(Boolean).join('\n');
+  };
 
   const isInitialMount = useRef(true);
 
   useEffect(() => {
+    setStreak(previous => {
+      const next = reconcileStudyStreak(studySessions, dailyGoal, previous);
+      return next.current === previous.current && next.max === previous.max && next.lastDate === previous.lastDate ? previous : next;
+    });
+  }, [studySessions, dailyGoal, streak.current, streak.max, streak.lastDate, today]);
+
+  useEffect(() => {
     const data = getCurrentData();
     const shouldNotify = !isInitialMount.current;
-    const knownUnlockedIds = unlockedAchievementIdsRef.current;
+    const verifiedIds = getVerifiedAchievementIds(data);
+    const verifiedIdSet = new Set(verifiedIds);
+    const knownUnlockedIds = new Set(
+      [...unlockedAchievementIdsRef.current].filter(id => verifiedIdSet.has(id)),
+    );
 
     const newUnlocked = ACHIEVEMENTS.filter(achievement => {
       if (knownUnlockedIds.has(achievement.id)) return false;
-      try {
-        return achievement.condition(data);
-      } catch {
-        return false;
-      }
+      return verifiedIdSet.has(achievement.id);
     });
 
-    if (newUnlocked.length > 0) {
-      newUnlocked.forEach(achievement => knownUnlockedIds.add(achievement.id));
-      const newUnlockedIds = newUnlocked.map(achievement => achievement.id);
-      setUnlockedAchievementIds(prev => Array.from(new Set([...prev, ...newUnlockedIds])));
+    unlockedAchievementIdsRef.current = verifiedIdSet;
+    if (!haveSameIds(unlockedAchievementIds, verifiedIds)) {
+      setUnlockedAchievementIds(verifiedIds);
+    }
 
+    if (newUnlocked.length > 0) {
       if (shouldNotify) {
         setAchievementQueue(queue => {
           const queuedIds = new Set([
@@ -1076,7 +1729,7 @@ const App: React.FC = () => {
     }
 
     isInitialMount.current = false;
-  }, [studySessions, tasks, streak, currentAchievementToast]);
+  }, [studySessions, tasks, completedTaskIds, streak, unlockedAchievementIds, currentAchievementToast]);
 
   useEffect(() => {
     if (!currentAchievementToast && achievementQueue.length > 0) {
@@ -1108,7 +1761,7 @@ const App: React.FC = () => {
       scoreTitle: '會考成績查詢',
       scoreUrl: 'https://cap.rcpet.edu.tw/',
     },
-    '115cap': {
+    '117cap': {
       pastTitle: '會考歷屆試題',
       pastUrl: 'https://cap.rcpet.edu.tw/examination.html',
       scoreTitle: '會考成績查詢',
@@ -1210,16 +1863,16 @@ const App: React.FC = () => {
       displayStr: '116.02.26 (09:00) ~ 08.31 (17:00)',
     },
     '116cap': {
-      start: '2027-06-05T08:00:00',
+      start: '2027-06-04T00:00:00',
       end: '2027-08-31T17:00:00',
       label: '116 會考',
-      displayStr: '116.06.05 (預計)',
+      displayStr: '116.06.04（開放時間依官方公告）',
     },
-    '115cap': {
-      start: '2026-06-05T08:00:00',
-      end: '2026-08-31T17:00:00',
-      label: '115 會考',
-      displayStr: '115.06.05 (08:00) ~ 08.31 (17:00)',
+    '117cap': {
+      start: '2028-06-01T00:00:00',
+      end: '2028-08-31T17:00:00',
+      label: '117 會考',
+      displayStr: '117 年成績公告日期待公布',
     },
     '116tvet': {
       start: '2027-05-14T09:00:00',
@@ -1234,10 +1887,10 @@ const App: React.FC = () => {
       displayStr: '115.05.14 (09:00) ~ 08.31 (17:00)'
     },
     '116ast': {
-      start: '2027-07-28T09:00:00',
+      start: '2027-07-29T09:00:00',
       end: '2027-08-31T17:00:00',
       label: '116 分科',
-      displayStr: '116.07.28 (預計)'
+      displayStr: '116.07.29 (09:00) ~ 08.31 (17:00)'
     },
     '115ast': {
       start: '2026-08-03T09:00:00',
@@ -1249,6 +1902,7 @@ const App: React.FC = () => {
   const currentScoreInfo = EXAM_SCORE_DATES[targetExam || '116gsat'] || EXAM_SCORE_DATES['116gsat'];
 
   const handleScoreQueryClick = () => {
+     if (targetExam === '117cap') { setIsScoreWarningOpen(true); return; }
      const now = new Date();
      const start = parseTaipeiDateTime(currentScoreInfo.start);
      const end = parseTaipeiDateTime(currentScoreInfo.end);
@@ -1265,182 +1919,9 @@ const App: React.FC = () => {
      window.open(currentExamLinks.scoreUrl, '_blank', 'noopener,noreferrer');
   };
 
-  const PromoCard = (
-     <a 
-        href={promoResource.href}
-        target="_blank" 
-        rel="noopener noreferrer" 
-        className={`relative overflow-hidden rounded-3xl p-5 border border-white/60 bg-gradient-to-br from-white/80 to-amber-50/50 shadow-sm hover:shadow-md ${promoResource.border} transition-all duration-300 group cursor-pointer block`}
-     >
-        <div className={`absolute -right-4 -top-4 w-28 h-28 bg-gradient-to-br ${promoResource.glow} rounded-full blur-2xl opacity-40 group-hover:opacity-60 transition-opacity`}></div>
-        
-        <div className="relative z-10 flex flex-col gap-3">
-           <div className="flex justify-between items-start">
-              <div className={`px-2.5 py-1 rounded-lg bg-gradient-to-r ${promoResource.accent} text-white text-[0px] font-bold tracking-wider shadow-sm shadow-orange-200/50`}>
-                 <span className="text-[10px]">{promoResource.badge}</span>
-                 115 學測生必看
-              </div>
-              <ExternalLink className={`w-4 h-4 text-slate-400 transition-colors ${promoResource.text}`} />
-           </div>
-           
-           <div>
-              <h3 className="text-[0px] font-bold text-slate-800 mb-1 flex items-center gap-2">
-                 <span className="text-base">{promoResource.title}</span>
-                 升大學管道與日程
-                 <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-              </h3>
-              <p className="text-[0px] text-slate-500 font-medium leading-relaxed group-hover:text-slate-600 transition-colors">
-                 <span className="text-xs">{promoResource.description}</span>
-                 完整收錄 115 學年度升學重要日期整理、簡章公告與入學管道詳細解析。
-              </p>
-           </div>
-
-           <div className={`flex items-center gap-1.5 text-[0px] font-bold ${promoResource.text} opacity-80 group-hover:opacity-100 transition-opacity mt-1`}>
-              <CalendarDays className="w-3 h-3" />
-              <span className="text-[10px]">{promoResource.action}</span>
-              <span>點擊查看重要時程</span>
-              <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
-           </div>
-        </div>
-     </a>
-  );
-
   const IdentityPromoCard = (
-     <a
-        href={promoResource.href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`relative overflow-hidden rounded-3xl p-5 border border-white/60 bg-gradient-to-br from-white/80 to-amber-50/50 shadow-sm hover:shadow-md ${promoResource.border} transition-all duration-300 group cursor-pointer block`}
-     >
-        <div className={`absolute -right-4 -top-4 w-28 h-28 bg-gradient-to-br ${promoResource.glow} rounded-full blur-2xl opacity-40 group-hover:opacity-60 transition-opacity`}></div>
-
-        <div className="relative z-10 flex flex-col gap-3">
-           <div className="flex justify-between items-start gap-3">
-              <div className={`px-2.5 py-1 rounded-lg bg-gradient-to-r ${promoResource.accent} text-white text-[10px] font-bold tracking-wider shadow-sm shadow-orange-200/50`}>
-                 {promoResource.badge}
-              </div>
-              <ExternalLink className={`w-4 h-4 text-slate-400 transition-colors ${promoResource.text}`} />
-           </div>
-
-           <div>
-              <h3 className="text-base font-bold text-slate-800 mb-1 flex items-center gap-2">
-                 {promoResource.title}
-                 <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-              </h3>
-              <p className="text-xs text-slate-500 font-medium leading-relaxed group-hover:text-slate-600 transition-colors">
-                 {promoResource.description}
-              </p>
-           </div>
-
-           <div className={`flex items-center gap-1.5 text-[10px] font-bold ${promoResource.text} opacity-80 group-hover:opacity-100 transition-opacity mt-1`}>
-              <CalendarDays className="w-3 h-3" />
-              <span>{promoResource.action}</span>
-              <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
-           </div>
-        </div>
-     </a>
+    <AdmissionsResourceCard year={currentExamPreset.year} category={currentExamPreset.category} resource={promoResource} />
   );
-
-  const handleWelcomeComplete = React.useCallback(() => {
-    setShowWelcome(false);
-    sessionStorage.removeItem('gsat_welcome_pending');
-  }, []);
-
-  const documentPages = {
-    instructions: {
-      eyebrow: 'Guide',
-      title: '使用說明',
-      subtitle: '快速掌握 Focus Space 的核心工作流，從設定目標、開始專注，到同步紀錄與查看榜單。',
-      icon: BookOpen,
-      accent: 'indigo',
-      updated: '適用於目前版本',
-      highlights: ['設定考試與目標', '管理任務與日程', '使用讀書計時器', '同步資料與榜單'],
-      sections: [
-        {
-          title: '先設定你的考試目標',
-          icon: Target,
-          body: '在主畫面或設定中選擇考試類型、年份與倒數日期。你也可以填入目標學校與科系，讓倒數、讀書紀錄與提醒都圍繞同一個目標運作。'
-        },
-        {
-          title: '用計時器建立讀書節奏',
-          icon: Clock,
-          body: '計時器支援倒數、正數、模擬考與挑戰模式。完成一次專注後，系統會累積讀書時間；挑戰模式則會結合待辦清單，讓完成任務也能轉成挑戰分數。'
-        },
-        {
-          title: '把任務、日程與統計放在一起看',
-          icon: ListChecks,
-          body: '待辦清單適合拆解每天要完成的題本、章節或複習項目；重要日程可以記錄報名、查分、考試與自訂提醒。讀書統計會幫你追蹤每日目標與連續紀錄。'
-        },
-        {
-          title: '登入後跨裝置同步',
-          icon: Cloud,
-          body: '登入後可以同步任務、讀書紀錄、挑戰紀錄、播放清單與部分設定。若暫時不登入，資料仍會保存在目前瀏覽器的本機儲存空間。'
-        }
-      ]
-    },
-    privacy: {
-      eyebrow: 'Privacy',
-      title: '隱私權政策',
-      subtitle: '我們只收集維持功能所需的資料，並盡量讓你的讀書紀錄保持可控、可理解。',
-      icon: Shield,
-      accent: 'emerald',
-      updated: '最後更新：2026/07/08',
-      highlights: ['本機優先儲存', '登入才會同步', '不販售個人資料', '可自行清除資料'],
-      sections: [
-        {
-          title: '我們會儲存哪些資料',
-          icon: FileText,
-          body: '為了提供倒數、任務、讀書統計、挑戰紀錄、播放清單與個人設定等功能，系統會在瀏覽器本機儲存相關資料。登入後，這些資料才會依同步功能上傳到雲端。'
-        },
-        {
-          title: '帳號與同步資料',
-          icon: Lock,
-          body: '當你建立帳號或登入時，我們會使用帳號資訊辨識你的同步資料。讀書紀錄、任務與設定只用於提供服務功能，例如跨裝置同步、排行榜與個人統計。'
-        },
-        {
-          title: '第三方服務',
-          icon: Server,
-          body: '本服務可能使用資料庫、登入、音樂播放或 AI 輔助等第三方服務。這些服務可能有各自的資料處理方式，我們會盡量只傳送完成該功能所需的最少資料。'
-        },
-        {
-          title: '你的控制權',
-          icon: CheckCircle2,
-          body: '你可以在設定中重置任務、讀書紀錄或重要日程，也可以登出停止同步。若你清除瀏覽器資料，本機儲存的內容也可能被移除。'
-        }
-      ]
-    },
-    terms: {
-      eyebrow: 'Terms',
-      title: '服務條款',
-      subtitle: '使用 Focus Space 代表你理解這是一個讀書輔助工具，並同意以合理、合法且尊重他人的方式使用。',
-      icon: ScrollText,
-      accent: 'amber',
-      updated: '最後更新：2026/07/08',
-      highlights: ['讀書輔助用途', '自行負責資料備份', '合理使用榜單', '服務可能調整'],
-      sections: [
-        {
-          title: '服務定位',
-          icon: Sparkles,
-          body: 'Focus Space 提供考試倒數、讀書計時、任務管理、日程提醒、統計與排行榜等功能。它能協助你建立讀書節奏，但不保證任何考試結果。'
-        },
-        {
-          title: '使用者責任',
-          icon: ClipboardCheck,
-          body: '請勿利用本服務進行干擾系統、冒用他人身份、提交不實資料、破壞排行榜公平性或其他違法行為。你也應自行確認考試資訊與官方公告。'
-        },
-        {
-          title: '資料與可用性',
-          icon: Cloud,
-          body: '我們會努力維持服務穩定，但仍可能因維護、網路、第三方服務或不可抗力造成中斷。重要資料建議自行備份，避免單一工具故障影響讀書安排。'
-        },
-        {
-          title: '條款更新',
-          icon: RefreshCw,
-          body: '我們可能依功能調整、法規需求或服務營運狀況更新條款。更新後繼續使用本服務，即視為你理解並接受新的條款內容。'
-        }
-      ]
-    }
-  } as const;
 
   const completeDocumentPages = {
     instructions: {
@@ -1486,290 +1967,68 @@ const App: React.FC = () => {
           title: '7. 重置與資料清理',
           icon: RefreshCw,
           body: '設定中提供重置任務、讀書紀錄與重要日程等操作。重置會清除對應資料，可能無法復原；如果你已登入，後續同步也可能影響雲端資料。進行重置前，請確認你已不再需要這些紀錄。'
-        }
-      ]
-    },
-    privacy: {
-      eyebrow: 'Privacy',
-      title: '隱私權政策',
-      subtitle: '本政策說明 Focus Space 會如何儲存、同步與使用你的資料。原則是本機優先、登入才同步、僅為提供功能而使用。',
-      icon: Shield,
-      accent: 'emerald',
-      updated: '最後更新：2026/07/08',
-      highlights: ['本機優先儲存', '登入後才同步', '不販售個人資料', '可自行清除資料'],
-      sections: [
-        {
-          title: '1. 本機儲存的資料',
-          icon: FileText,
-          body: '未登入時，本服務會使用瀏覽器 localStorage 儲存資料，包括考試設定、目標學校與科系、待辦清單、讀書紀錄、挑戰紀錄、自訂日期、每日目標、連續紀錄、播放清單、音樂設定、主題設定、成就、祈願相關資料與考前檢查清單。這些資料通常只存在你目前使用的瀏覽器與裝置。'
         },
         {
-          title: '2. 帳號、登入與同步資料',
-          icon: Lock,
-          body: '當你註冊或登入時，系統會透過 Supabase 處理帳號驗證，並可能儲存電子郵件、名稱、考試類型、隊伍、裝置識別碼、裝置名稱、登入狀態與同步用資料。登入後，任務、讀書紀錄、挑戰紀錄、播放清單、部分設定與隊伍資訊可能會同步到雲端，以提供跨裝置使用、排行榜與裝置管理功能。'
-        },
-        {
-          title: '3. 裝置資料與安全登入',
-          icon: Server,
-          body: '為了支援裝置管理與登入狀態檢查，系統會產生並儲存 deviceId，並根據瀏覽器 user agent 產生裝置名稱，例如 Chrome on Windows。若使用 Passkey，驗證流程會透過瀏覽器與 Supabase 支援的 WebAuthn/Passkey 機制處理；本服務不會取得你的生物辨識資料。'
-        },
-        {
-          title: '4. 第三方服務',
-          icon: ExternalLink,
-          body: '本服務目前可能使用 Supabase 提供登入、資料庫、同步與排行榜功能；使用 YouTube IFrame API 播放背景音樂；使用 YouTube 縮圖顯示封面；新增 YouTube 歌曲時可能透過 noembed 查詢影片標題。瀏覽器載入這些第三方服務時，對方可能依其政策處理技術資訊，例如 IP 位址、瀏覽器資訊或請求紀錄。'
-        },
-        {
-          title: '5. AI 與語錄功能',
-          icon: Sparkles,
-          body: '目前瀏覽器端不會直接夾帶 Gemini API key，也不會把你的個人讀書資料直接送往 Gemini。語錄服務在沒有安全後端端點時會使用內建備用語錄。若未來恢復 AI 生成或新增伺服器端 AI 功能，應另行更新本政策並清楚說明資料使用方式。'
-        },
-        {
-          title: '6. 資料用途',
+          title: '8. 問題回報與使用建議',
           icon: CheckCircle2,
-          body: '資料會用於提供倒數、任務管理、讀書統計、學習歷程、排行榜、隊伍、今日共讀、登入同步、裝置管理、成就與播放清單等功能。我們不會販售你的個人資料，也不會將你的讀書內容用於與本服務無關的廣告交易。'
-        },
-        {
-          title: '7. 你的控制權與刪除方式',
-          icon: RefreshCw,
-          body: '你可以在設定中重置任務、讀書紀錄或重要日程，也可以登出帳號、移除裝置或清除瀏覽器資料。清除瀏覽器 localStorage 會移除本機資料；若你已登入，雲端資料仍可能保留，除非服務提供相應刪除或重置流程。'
-        },
-        {
-          title: '8. 資料安全與限制',
-          icon: Shield,
-          body: '我們會盡力使用登入驗證、Supabase 權限設定與瀏覽器安全機制保護資料。不過，任何網路服務都無法保證百分之百安全；請避免在任務、目標或自訂欄位輸入敏感個資、密碼、身分證字號、住址、金融資訊或不希望外洩的內容。'
+          body: '若畫面資料與預期不一致，請先確認目前登入帳號、網路狀態及同步是否完成；不要以重新設定或清除資料作為第一步，以免遺失紀錄。功能、錯誤或資料問題可寄至 tyctw.analyze@gmail.com，並請提供問題發生時間、使用裝置、瀏覽器與可重現步驟；請勿透過電子郵件提供密碼、驗證碼或敏感個資。'
         }
       ]
     },
-    terms: {
-      eyebrow: 'Terms',
-      title: '服務條款',
-      subtitle: '使用 Focus Space 即代表你了解本服務是讀書輔助工具，並同意以合法、合理且不干擾他人的方式使用。',
-      icon: ScrollText,
-      accent: 'amber',
-      updated: '最後更新：2026/07/08',
-      highlights: ['讀書輔助用途', '自行確認官方資訊', '合理使用同步與榜單', '服務可能調整'],
-      sections: [
-        {
-          title: '1. 服務內容',
-          icon: Sparkles,
-          body: 'Focus Space 提供考試倒數、讀書計時、任務管理、重要日程、學習歷程、成就、排行榜、隊伍、今日共讀、背景音樂與登入同步等功能。這些功能是為了協助使用者整理讀書節奏與紀錄，並非官方考試服務。'
-        },
-        {
-          title: '2. 考試資訊與提醒',
-          icon: AlertTriangle,
-          body: '本服務可能顯示考試日期、查分時間、公告提醒或考前清單，但這些內容僅供輔助參考。正式考試資訊、報名規則、成績查詢、考場規定與日程異動，請以大考中心、技專校院入學測驗中心、國中教育會考官方網站或其他主管機關公告為準。'
-        },
-        {
-          title: '3. 使用者責任',
-          icon: ClipboardCheck,
-          body: '你同意不以本服務進行違法行為、干擾系統、嘗試未授權存取、冒用他人身分、提交不實資料、破壞排行榜公平性、散布惡意連結或侵犯他人權利。你也應自行妥善保管帳號、密碼、登入裝置與瀏覽器資料。'
-        },
-        {
-          title: '4. 帳號、同步與資料備份',
-          icon: Cloud,
-          body: '登入同步是便利功能，不代表永久備份保證。因瀏覽器清除資料、網路異常、第三方服務中斷、同步衝突、使用者重置資料或其他不可預期因素，紀錄可能遺失或不完整。重要讀書紀錄、考試資訊與個人安排，建議自行備份或另行保存。'
-        },
-        {
-          title: '5. 排行榜與社群功能',
-          icon: Trophy,
-          body: '排行榜、隊伍排名與今日共讀統計依系統可取得的同步資料計算，可能因延遲、網路、資料同步狀態或計算規則調整而變動。請勿使用程式化方式灌水、偽造紀錄或干擾他人排名；如偵測到異常使用，服務可限制、排除或重置相關資料。'
-        },
-        {
-          title: '6. 第三方內容與服務',
-          icon: ExternalLink,
-          body: '背景音樂與自訂歌曲可能連結至 YouTube 或其他第三方資料來源。你需自行確認使用的影片、音樂或外部內容符合相關平台規範與著作權要求。第三方服務的可用性、內容正確性與資料處理方式，不由本服務完全控制。'
-        },
-        {
-          title: '7. 免責聲明',
-          icon: Shield,
-          body: '本服務以現況提供，不保證不中斷、無錯誤、完全符合你的需求，或必然提升成績。因使用或無法使用本服務、資料遺失、同步失敗、第三方服務中斷、考試資訊誤用或使用者自行操作造成的損失，除法律另有強制規定外，本服務不負超出合理範圍的責任。'
-        },
-        {
-          title: '8. 條款更新與服務調整',
-          icon: RefreshCw,
-          body: '我們可能依功能更新、資安需求、法規變更或營運狀況調整服務內容與條款。更新後繼續使用本服務，即視為你理解並接受更新內容；若不同意，請停止使用並視需要清除本機資料或登出帳號。'
-        }
-      ]
-    }
   } as const;
 
-  const renderDocumentPage = () => {
-    if (activePage !== 'instructions' && activePage !== 'privacy' && activePage !== 'terms') return null;
-    const page = completeDocumentPages[activePage];
-    const Icon = page.icon;
-    const accentClasses = {
-      indigo: {
-        text: 'text-indigo-700',
-        bg: 'bg-indigo-50',
-        border: 'border-indigo-100',
-        bar: 'from-indigo-500 via-violet-500 to-sky-400',
-        button: 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200/70'
-      },
-      emerald: {
-        text: 'text-emerald-700',
-        bg: 'bg-emerald-50',
-        border: 'border-emerald-100',
-        bar: 'from-emerald-500 via-teal-400 to-sky-400',
-        button: 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200/70'
-      },
-      amber: {
-        text: 'text-amber-700',
-        bg: 'bg-amber-50',
-        border: 'border-amber-100',
-        bar: 'from-amber-500 via-orange-400 to-rose-400',
-        button: 'bg-amber-600 hover:bg-amber-700 shadow-amber-200/70'
-      }
-    }[page.accent];
-
+  if (isAuthOpen) {
     return (
-      <main id="main-content" className="max-w-6xl mx-auto relative z-10 pb-12 opacity-0 animate-fade-in-up delay-100">
-        <section className="relative overflow-hidden rounded-[1.75rem] border border-white/70 bg-white/80 p-5 shadow-xl shadow-slate-200/60 backdrop-blur-xl sm:p-8">
-          <div className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${accentClasses.bar}`}></div>
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex items-start gap-4">
-              <button
-                onClick={() => setActivePage('home')}
-                className="mt-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:border-slate-300 hover:text-slate-900"
-                title="返回主頁"
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </button>
-              <div>
-                <p className={`mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.22em] ${accentClasses.text}`}>
-                  <Icon className="h-4 w-4" />
-                  {page.eyebrow}
-                </p>
-                <h1 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">{page.title}</h1>
-                <p className="mt-3 max-w-2xl text-sm font-semibold leading-relaxed text-slate-500">{page.subtitle}</p>
-              </div>
-            </div>
-            <div className={`rounded-2xl border ${accentClasses.border} ${accentClasses.bg} px-4 py-3 text-sm font-bold ${accentClasses.text}`}>
-              {page.updated}
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr]">
-          <aside className="h-fit rounded-[1.5rem] border border-white/70 bg-white/80 p-4 shadow-lg shadow-slate-200/50 backdrop-blur-xl">
-            <div className="mb-3 text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Highlights</div>
-            <div className="space-y-2">
-              {page.highlights.map((item) => (
-                <div key={item} className="flex items-center gap-2 rounded-2xl border border-slate-100 bg-slate-50/80 px-3 py-2 text-sm font-bold text-slate-600">
-                  <CheckCircle2 className={`h-4 w-4 ${accentClasses.text}`} />
-                  {item}
-                </div>
-              ))}
-            </div>
-          </aside>
-
-          <article className="rounded-[1.5rem] border border-white/70 bg-white/85 p-4 shadow-xl shadow-slate-200/60 backdrop-blur-xl sm:p-6">
-            <div className="grid grid-cols-1 gap-4">
-              {page.sections.map((section, index) => {
-                const SectionIcon = section.icon;
-                return (
-                  <section key={section.title} className="rounded-[1.25rem] border border-slate-100 bg-white p-5 shadow-sm">
-                    <div className="flex items-start gap-4">
-                      <div className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl ${accentClasses.bg} ${accentClasses.text} border ${accentClasses.border}`}>
-                        <SectionIcon className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <div className="mb-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                          Section {index + 1}
-                        </div>
-                        <h2 className="text-lg font-black text-slate-900">{section.title}</h2>
-                        <p className="mt-2 text-sm font-medium leading-7 text-slate-600">{section.body}</p>
-                      </div>
-                    </div>
-                  </section>
-                );
-              })}
-            </div>
-          </article>
-        </section>
-      </main>
+      <>
+        <Suspense fallback={<PageLoading />}>
+        <AuthPage
+          isOpen
+          onClose={() => {
+            if (activePage === 'account' && !user) setActivePage('home');
+            setIsAuthOpen(false);
+            setAuthInitialMode(undefined);
+            setAuthInitialEmail(undefined);
+            setAuthInitialResetCode(undefined);
+          }}
+          onLoginSuccess={handleLoginSuccess}
+          onLogout={handleLogout}
+          currentData={getCurrentData()}
+          currentUser={user}
+          initialMode={authInitialMode}
+          initialEmail={authInitialEmail}
+          initialResetCode={authInitialResetCode}
+          onShowPrivacy={() => { setIsAuthOpen(false); setActivePage('privacy'); }}
+          onShowInstructions={() => { setIsAuthOpen(false); setActivePage('instructions'); }}
+          onShowTerms={() => { setIsAuthOpen(false); setActivePage('terms'); }}
+        />
+        </Suspense>
+        <AnalyticsConsent />
+        <StorageNotice getBackup={() => ({ data: getCurrentData(), pendingStudySessionIds: Array.from(pendingStudySessionIdsRef.current) })} />
+      </>
     );
-  };
+  }
 
   return (
-    <div className="min-h-screen relative font-sans text-slate-800 p-4 md:p-8 overflow-x-hidden">
+    <div className={`relative flex min-h-screen flex-col p-4 font-sans text-slate-800 md:p-8 ${activePage === 'home' ? 'home-shell' : activePage === 'community' ? 'community-shell' : activePage === 'temple' ? 'temple-shell' : activePage === 'instructions' ? 'guide-shell' : activePage === 'privacy' ? 'privacy-shell' : activePage === 'terms' ? 'terms-shell' : activePage === 'refund' ? 'refund-shell' : activePage === 'support' ? 'service-shell' : ''}`}>
+      <StorageNotice getBackup={() => ({ data: getCurrentData(), pendingStudySessionIds: Array.from(pendingStudySessionIdsRef.current) })} />
       <a href="#main-content" className="skip-link">跳到主要內容</a>
       {/* Light Theme Dynamic Background */}
       <div className="fixed top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full bg-indigo-200 blur-[120px] animate-blob mix-blend-multiply opacity-60 pointer-events-none"></div>
       <div className="fixed bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full bg-fuchsia-200 blur-[120px] animate-blob animation-delay-2000 mix-blend-multiply opacity-60 pointer-events-none"></div>
       
-      {/* Floating Header */}
-      <header className="sticky top-4 z-50 mb-8 max-w-7xl mx-auto px-1 sm:px-4 opacity-0 animate-fade-in-down">
-         <nav className="flex items-center justify-between p-2 pl-4 md:pl-6 bg-white/70 backdrop-blur-xl rounded-full border border-white/40 shadow-xl shadow-indigo-100/50 transition-all duration-300 hover:bg-white/80 hover:border-white/60" aria-label="主要導覽">
-            <div className="flex items-center gap-3">
-               <div className="relative group cursor-default" aria-label={`目前考試：${currentExam?.name || '未設定'}`}>
-                  <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-violet-600 rounded-full flex items-center justify-center text-white font-black text-xs shadow-lg shadow-indigo-200 group-hover:scale-105 transition-transform overflow-hidden px-1 text-center">
-                     {currentExam?.year || '116'}
-                  </div>
-                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-white rounded-full flex items-center justify-center border border-slate-100 shadow-sm">
-                     <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" aria-hidden="true"></div>
-                  </div>
-               </div>
-               <div className="flex flex-col">
-                  <span className="font-bold text-slate-800 leading-none tracking-tight text-sm md:text-base">{EXAM_PRESETS.find(p => p.id === targetExam)?.name || '學測'}倒數</span>
-                  <span className="text-[10px] font-bold text-slate-400 tracking-widest mt-0.5">FOCUS SPACE</span>
-               </div>
-            </div>
+      <SiteHeader activePage={activePage} examId={targetExam}
+        examName={EXAM_PRESETS.find(preset => preset.id === targetExam)?.name || '升學備考'}
+        targetSchool={targetSchool} isLoggedIn={Boolean(user)} userName={user?.name} isSyncing={isSyncing}
+        onNavigate={setActivePage} pastUrl={currentExamLinks.pastUrl}
+        pastTitle={currentExamLinks.pastTitle} scoreTitle={currentExamLinks.scoreTitle}
+        onScoreQuery={handleScoreQueryClick} onExamReminder={() => setIsExamReminderOpen(true)} />
 
-            <div className="flex items-center gap-1.5 md:gap-3">
-                  <button
-                     onClick={() => setActivePage('settings')}
-                     aria-current={activePage === 'settings' ? 'page' : undefined}
-                     aria-label={`開啟設定，目前目標學校：${targetSchool || '未設定'}`}
-                  className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-white rounded-full transition-all border border-slate-100 hover:border-indigo-200 group"
-               >
-                  <div className="p-1 rounded-full bg-indigo-100 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                     <GraduationCap className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="flex flex-col items-start leading-none pr-1">
-                     <span className="text-[9px] text-slate-400 font-bold uppercase">Target</span>
-                     <span className="text-xs font-bold text-slate-700 max-w-[100px] truncate">{targetSchool}</span>
-                  </div>
-               </button>
+      {activePage === 'home' && <div aria-hidden="true" className="header-announcement-spacer flex-none" />}
+      <div aria-hidden="true" className="h-[92px] flex-none md:h-[102px]" />
 
-               <div className="h-6 w-px bg-slate-200 mx-0.5 hidden md:block"></div>
-
-               <div className="flex items-center gap-1">
-                  <button onClick={() => setActivePage('ranking')} aria-label="開啟排行榜" aria-current={activePage === 'ranking' ? 'page' : undefined} className="w-10 h-10 rounded-full hover:bg-yellow-50 flex items-center justify-center text-slate-400 hover:text-yellow-600 transition-all relative group" title="排行榜">
-                     <Trophy className="w-5 h-5" />
-                     <span className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">排行榜</span>
-                  </button>
-
-                  <button 
-                     onClick={() => user ? setActivePage('account') : setIsAuthOpen(true)} 
-                     className={`w-10 h-10 rounded-full flex items-center justify-center transition-all relative group ${user ? 'bg-indigo-50 text-indigo-600' : 'hover:bg-slate-100 text-slate-400 hover:text-indigo-600'}`}
-                     aria-label={user ? `開啟帳號設定，已登入為 ${user.name}` : '登入或註冊'}
-                     aria-busy={isSyncing || undefined}
-                     title={user ? '帳號設定' : '登入/註冊'}
-                  >
-                     <UserCircle className="w-5 h-5" />
-                     {isSyncing && (
-                        <span className="absolute top-2 right-2 w-2 h-2 bg-blue-500 rounded-full border border-white animate-ping" aria-hidden="true"></span>
-                     )}
-                     <span className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                        {user ? user.name : '登入'}
-                     </span>
-                  </button>
-
-                  <button onClick={() => setActivePage('settings')} className="md:hidden w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-700 transition-all relative group" title="設定">
-                     <Settings className="w-5 h-5" />
-                  </button>
-
-                  <button onClick={() => setIsMenuOpen(true)} className="w-10 h-10 rounded-full bg-slate-900 hover:bg-slate-800 flex items-center justify-center text-white transition-all shadow-md shadow-slate-300 relative group ml-1">
-                     <LayoutGrid className="w-4 h-4" />
-                     <span className="absolute -bottom-10 right-0 bg-slate-800 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">選單</span>
-                  </button>
-               </div>
-            </div>
-         </nav>
-      </header>
-
+      <Suspense fallback={<PageLoading />}>
       {activePage === 'ranking' ? (
-      <main id="main-content" className="max-w-5xl mx-auto relative z-10 pb-12 opacity-0 animate-fade-in-up delay-100">
+      <main id="main-content" className="relative z-10 mx-auto w-full max-w-[108rem] px-4 pb-12 opacity-0 animate-fade-in-up delay-100 sm:px-6 lg:px-8">
         <RankingBoard
           isOpen={true}
           onClose={() => setActivePage('home')}
@@ -1777,21 +2036,30 @@ const App: React.FC = () => {
           challengeRecords={challengeRecords}
           studySessions={studySessions}
           team={team}
-          onJoinTeam={(newTeam) => setTeam(newTeam)}
+          onJoinTeam={(newTeam) => setSyncedTeam(newTeam)}
           variant="page"
         />
+      </main>
+      ) : activePage === 'community' ? (
+      <main id="main-content" className="relative z-10 mx-auto w-full max-w-[108rem] px-4 pb-12 opacity-0 animate-fade-in-up delay-100 sm:px-6 lg:px-8">
+        <TodayCommunityStudy sessions={studySessions} variant="page" onBack={() => setActivePage('home')} onStartFocus={() => {
+          setActivePage('home');
+          requestAnimationFrame(() => document.getElementById('home-focus')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+        }} />
       </main>
       ) : activePage === 'learning' ? (
-      <main id="main-content" className="max-w-6xl mx-auto relative z-10 pb-12 opacity-0 animate-fade-in-up delay-100">
-        <FocusStatsModal
-          isOpen={true}
-          onClose={() => setActivePage('home')}
-          sessions={studySessions}
-          variant="page"
-        />
+          <main id="main-content" className="mx-auto w-full max-w-[108rem] relative z-10 pb-12 opacity-0 animate-fade-in-up delay-100">
+          <FocusStatsModal
+            isOpen={true}
+            onClose={() => setActivePage('home')}
+            sessions={studySessions}
+            dailyGoal={dailyGoal}
+            variant="page"
+            onCheckSync={handleCheckStudySync}
+          />
       </main>
       ) : activePage === 'achievements' ? (
-      <main id="main-content" className="max-w-7xl mx-auto relative z-10 pb-12 opacity-0 animate-fade-in-up delay-100">
+      <main id="main-content" className="mx-auto w-full max-w-[92rem] relative z-10 pb-12 opacity-0 animate-fade-in-up delay-100">
         <AchievementsModal
           isOpen={true}
           onClose={() => setActivePage('home')}
@@ -1800,16 +2068,18 @@ const App: React.FC = () => {
         />
       </main>
       ) : activePage === 'temple' ? (
-      <main id="main-content" className="max-w-7xl mx-auto relative z-10 pb-12 opacity-0 animate-fade-in-up delay-100">
+      <main id="main-content" className="w-full min-w-0 max-w-7xl mx-auto relative z-10 pb-12 opacity-0 animate-fade-in-up delay-100">
         <TempleModal
+          isVerified={isTempleVerified}
           isOpen={true}
           onClose={() => setActivePage('home')}
           incenseCoins={incenseCoins}
-          setIncenseCoins={setIncenseCoins}
           incenseRecords={incenseRecords}
-          setIncenseRecords={setIncenseRecords}
           templeState={templeState}
-          setTempleState={setTempleState}
+          onPerformRitual={handleTempleRitual}
+          onCheckSync={handleCheckStudySync}
+          pendingStudyCount={pendingStudySessionIds.length}
+          syncMessage={studySyncError}
           variant="page"
           userName={user?.name}
           targetSchool={targetSchool}
@@ -1818,50 +2088,76 @@ const App: React.FC = () => {
       ) : activePage === 'account' && user ? (
         <AccountPage
           currentUser={user}
+          onPrepareLogout={prepareLogout}
           onBack={() => setActivePage('home')}
           onLogout={handleLogout}
           onUserUpdate={(updatedUser) => {
             setUser(updatedUser);
-            localStorage.setItem('gsat_user_profile', JSON.stringify(updatedUser));
+            safeLocalStorage.setItem('gsat_user_profile', JSON.stringify(updatedUser));
           }}
+          onSync={() => triggerSync(true)}
+          isSyncing={isSyncing}
         />
+      ) : activePage === 'schedule' ? (
+        <OfficialSchedulePage targetExam={targetExam} onBack={() => setActivePage('home')} />
+      ) : activePage === 'donation' ? (
+        <DonationPage targetExam={targetExam} onBack={() => setActivePage('home')} />
       ) : activePage === 'settings' ? (
-      <main id="main-content" className="max-w-7xl mx-auto relative z-10 pb-12 opacity-0 animate-fade-in-up delay-100">
+      <main id="main-content" className="w-full max-w-7xl mx-auto relative z-10 pb-12 opacity-0 animate-fade-in-up delay-100">
         <SettingsPage
           onClose={() => {
             setActivePage('home');
             setConfirmResetType(null);
           }}
           targetExam={targetExam}
-          setTargetExam={setTargetExam}
+          setTargetExam={setSyncedTargetExam}
           targetDateStr={targetDateStr}
-          setTargetDateStr={setTargetDateStr}
+          setTargetDateStr={setSyncedTargetDateStr}
           targetSchool={targetSchool}
-          setTargetSchool={setTargetSchool}
+          setTargetSchool={setSyncedTargetSchool}
           targetMajor={targetMajor}
-          setTargetMajor={setTargetMajor}
+          setTargetMajor={setSyncedTargetMajor}
           dailyGoal={dailyGoal}
-          setDailyGoal={setDailyGoal}
+          setDailyGoal={setSyncedDailyGoal}
           tvetCategory={tvetCategory}
           setIsTvetCategoryModalOpen={setIsTvetCategoryModalOpen}
           selectedCategory={selectedCategory}
           setSelectedCategory={setSelectedCategory}
           setPendingExamSwitch={setPendingExamSwitch}
+          isAuthenticated={Boolean(user)}
           confirmResetType={confirmResetType}
           setConfirmResetType={setConfirmResetType}
           executeReset={executeReset}
         />
       </main>
-      ) : activePage !== 'home' ? (
-        renderDocumentPage()
-      ) : (
-      <main id="main-content" className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 relative z-10 pb-12">
-        
-        {/* Left Column */}
-        <div className="lg:col-span-8 flex flex-col gap-6 opacity-0 animate-fade-in-up delay-100">
-           
-<CountdownDisplay 
-  timeLeft={timeLeft} 
+      ) : activePage === 'announcements' ? (
+        <AnnouncementsPage onBack={() => setActivePage('home')} />
+      ) : activePage === 'privacy' ? (
+        <PrivacyPage examId={targetExam} onNavigate={setActivePage} />
+      ) : activePage === 'support' ? (
+        <CustomerSupportPage examId={targetExam} onNavigate={setActivePage} />
+      ) : activePage === 'refund' ? (
+        <RefundPage examId={targetExam} onNavigate={setActivePage} />
+      ) : activePage === 'terms' ? (
+        <TermsPage examId={targetExam} onNavigate={setActivePage} />
+      ) : activePage === 'instructions' ? (
+        <InstructionsPage examId={targetExam} onNavigate={setActivePage} sections={completeDocumentPages.instructions.sections} />
+      ) : null}
+      </Suspense>
+      {/* Keep the timer mounted while visiting statistics and other pages. */}
+      <HomePage
+        isVisible={activePage === 'home'}
+        examId={targetExam}
+        examName={EXAM_PRESETS.find(p => p.id === targetExam)?.name || '備考'}
+        userName={user?.name}
+        targetSchool={targetSchool}
+        targetMajor={targetMajor}
+        onNavigate={setActivePage}
+        pastUrl={currentExamLinks.pastUrl}
+        pastTitle={currentExamLinks.pastTitle}
+        scoreTitle={currentExamLinks.scoreTitle}
+        onScoreQuery={handleScoreQueryClick}
+        countdown={<CountdownDisplay
   targetDate={parseTaipeiDateTime(targetDateStr)} 
   user={user} 
   examName={EXAM_PRESETS.find(p => p.id === targetExam)?.name}
@@ -1872,375 +2168,95 @@ const App: React.FC = () => {
     const preset = EXAM_PRESETS.find(e => e.id === id);
     if (!preset) return;
     const currentPreset = EXAM_PRESETS.find(e => e.id === targetExam);
-    if (currentPreset && currentPreset.category !== preset.category) {
+    if (user && currentPreset && currentPreset.category !== preset.category) {
       setPendingExamSwitch(preset);
     } else {
-      setTargetExam(preset.id);
-      setTargetDateStr(preset.date);
+      setSyncedTargetExam(preset.id);
+      setSyncedTargetDateStr(preset.date);
     }
   }}
-           />
-           <QuoteCard />
-
-           <button
-              onClick={() => setIsAnnouncementOpen(true)}
-              className="hidden w-full overflow-hidden rounded-3xl border border-rose-100 bg-white/90 shadow-lg shadow-rose-100/50 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-rose-100/70 text-left"
-           >
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-5">
-                 <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
-                    <AlertTriangle className="h-6 w-6" />
-                 </div>
-                 <div className="min-w-0 flex-1">
-                    <div className="mb-1 flex flex-wrap items-center gap-2">
-                       <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-black tracking-widest text-rose-700">最新公告</span>
-                       <span className="text-[11px] font-bold text-slate-400">115.07.08 大考中心新聞稿</span>
-                    </div>
-                    <h3 className="text-base font-black text-slate-800">115 分科測驗因應巴威颱風順延</h3>
-                    <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500">
-                       考試改至 7 月 13 日（一）至 7 月 14 日（二）舉行；查看試場、成績公布與複查日程同步調整。
-                    </p>
-                 </div>
-                 <div className="flex items-center gap-1 text-xs font-black text-rose-600">
-                    查看詳情
-                    <ArrowRight className="h-4 w-4" />
-                 </div>
-              </div>
-           </button>
-
-           {/* Featured Features */}
-           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-               <button 
-                  onClick={() => setActivePage('temple')}
-                  className="glass-card p-5 rounded-3xl flex items-center gap-4 group hover:bg-amber-50/50 transition-all border border-white/60 hover:shadow-md text-left"
-               >
-                  <div className="p-3 bg-amber-100 text-amber-600 rounded-2xl group-hover:scale-110 transition-transform shadow-sm shadow-amber-200/50">
-                     <Sparkles className="w-6 h-6" />
-                  </div>
-                  <div className="flex flex-col">
-                     <span className="font-bold text-slate-700 text-base">線上文昌廟</span>
-                     <span className="text-xs text-slate-400">祈福、求籤、點燈</span>
-                  </div>
-               </button>
-
-               <button 
-                   onClick={() => setActivePage('achievements')}
-                  className="glass-card p-5 rounded-3xl flex items-center gap-4 group hover:bg-indigo-50/50 transition-all border border-white/60 hover:shadow-md text-left"
-               >
-                  <div className="p-3 bg-indigo-100 text-indigo-600 rounded-2xl group-hover:scale-110 transition-transform shadow-sm shadow-indigo-200/50">
-                     <Medal className="w-6 h-6" />
-                  </div>
-                  <div className="flex flex-col">
-                     <span className="font-bold text-slate-700 text-base">成就與紀錄</span>
-                     <span className="text-xs text-slate-400">個人榮譽與讀書歷程</span>
-                  </div>
-               </button>
-
-               <button
-                  onClick={() => setIsCommunityStudyOpen(true)}
-                  className="glass-card p-5 rounded-3xl flex items-center gap-4 group hover:bg-emerald-50/50 transition-all border border-white/60 hover:shadow-md text-left"
-               >
-                  <div className="p-3 bg-emerald-100 text-emerald-600 rounded-2xl group-hover:scale-110 transition-transform shadow-sm shadow-emerald-200/50">
-                     <UsersRound className="w-6 h-6" />
-                  </div>
-                  <div className="flex flex-col min-w-0">
-                     <span className="font-bold text-slate-700 text-base truncate">今日共讀</span>
-                     <span className="text-xs text-slate-400">看看大家今天讀多久</span>
-                  </div>
-               </button>
-           </div>
-
-           {/* Quick Links */}
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-               <a 
-                 href={currentExamLinks.pastUrl} 
-                 target="_blank" 
-                 rel="noopener noreferrer"
-                 className="glass-card p-4 rounded-2xl flex items-center justify-between group hover:bg-white/80 transition-all border border-white/60 hover:shadow-md"
-               >
-                  <div className="flex items-center gap-3">
-                     <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl group-hover:scale-110 transition-transform">
-                        <FileText className="w-5 h-5" />
-                     </div>
-                     <div className="flex flex-col">
-                        <span className="font-bold text-slate-700 text-sm">{currentExamLinks.pastTitle}</span>
-                        <span className="text-[10px] text-slate-400">考古題下載</span>
-                     </div>
-                  </div>
-                  <ExternalLink className="w-4 h-4 text-slate-300 group-hover:text-indigo-400 transition-colors" />
-               </a>
-
-               <button 
-                 onClick={handleScoreQueryClick}
-                 className="glass-card p-4 rounded-2xl flex items-center justify-between group hover:bg-white/80 transition-all border border-white/60 text-left hover:shadow-md"
-               >
-                  <div className="flex items-center gap-3">
-                     <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl group-hover:scale-110 transition-transform">
-                        <Search className="w-5 h-5" />
-                     </div>
-                     <div className="flex flex-col">
-                        <span className="font-bold text-slate-700 text-sm">{currentExamLinks.scoreTitle}</span>
-                        <span className="text-[10px] text-slate-400">成績查詢系統</span>
-                     </div>
-                  </div>
-                  <ExternalLink className="w-4 h-4 text-slate-300 group-hover:text-amber-400 transition-colors" />
-               </button>
-           </div>
-           
-           <div className="lg:hidden">
-              {IdentityPromoCard}
-           </div>
-<StudyTimer 
+           />}
+        timer={<StudyTimer
               onSaveSession={handleSaveSession} 
               onSaveChallenge={handleSaveChallenge}
               challengeRecords={challengeRecords}
               targetSchool={targetSchool}
               targetMajor={targetMajor}
               tasks={tasks}
-              setTasks={setTasks}
+              setTasks={setSyncedTasks}
               playlists={playlists}
               setPlaylists={setPlaylists}
+              onDeleteTrack={(playlistId, trackId) => {
+                setDeletedTrackIds(prev => ({
+                  ...prev,
+                  [playlistId]: mergeDeletedIds(prev[playlistId], [trackId]),
+                }));
+              }}
+              onDeletePlaylist={(playlistId) => {
+                setDeletedPlaylistIds(prev => mergeDeletedIds(prev, [playlistId]));
+              }}
               activePlaylistId={activePlaylistId}
               setActivePlaylistId={setActivePlaylistId}
               targetExam={targetExam}
-           />
-
-           <FocusStats 
+           />}
+        stats={<FocusStats
+              compact
               sessions={studySessions} 
               dailyGoal={dailyGoal}
               streak={streak}
               onClick={() => setActivePage('learning')} 
-           />
-        </div>
-
-        {/* Right Column */}
-        <div className="lg:col-span-4 flex flex-col gap-6 opacity-0 animate-fade-in-up delay-200">
-           <div className="hidden lg:block">
-              {IdentityPromoCard}
-           </div>
-
-           <div className="flex-1 min-h-[300px]">
-              <TaskList tasks={tasks} setTasks={setTasks} />
-           </div>
-           <button
-              onClick={() => setIsAnnouncementOpen(true)}
-              className="group relative overflow-hidden rounded-[1.5rem] border border-rose-100 bg-white/90 p-4 text-left shadow-lg shadow-rose-100/40 transition-all hover:-translate-y-0.5 hover:border-rose-200 hover:shadow-xl hover:shadow-rose-100/70"
-           >
-              <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full bg-rose-200/35 blur-2xl transition-transform group-hover:scale-125" />
-              <div className="relative flex items-start gap-3">
-                 <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 ring-1 ring-rose-100">
-                    <AlertTriangle className="h-5 w-5" />
-                 </div>
-                 <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                       <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-black tracking-widest text-rose-700">最新公告</span>
-                       <span className="text-[11px] font-bold text-slate-400">115.07.08 大考中心新聞稿</span>
-                    </div>
-                    <h3 className="mt-2 text-sm font-black leading-snug text-slate-850">
-                       115 分科測驗因應巴威颱風順延
-                    </h3>
-                    <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
-                       考試改至 7 月 13 日（一）至 7 月 14 日（二）舉行，日程與查詢時間已同步調整。
-                    </p>
-                    <div className="mt-3 inline-flex items-center gap-1 text-xs font-black text-rose-600">
-                       查看詳情
-                       <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                    </div>
-                 </div>
-              </div>
-           </button>
-            <div className="h-[560px] lg:h-[620px]">
-               <ScheduleTable targetExam={targetExam} tvetCategory={tvetCategory} />
-            </div>
-           <div className="h-[500px]">
-              <ImportantDates 
+           />}
+        tasks={<TaskList tasks={tasks} setTasks={setSyncedTasks} previewLimit={3} />}
+        schedule={<ScheduleTable targetExam={targetExam} tvetCategory={tvetCategory} />}
+        dates={<ImportantDates
                 customDates={customDates}
                 setCustomDates={setCustomDates}
+                onDeleteCustomDate={(id) => {
+                  setCustomDates(prev => prev.filter(date => date.id !== id));
+                  setDeletedCustomDateIds(prev => mergeDeletedIds(prev, [id]));
+                }}
                 targetExam={targetExam}
-              />
-           </div>
-        </div>
-
-      </main>
-      )}
+                onOpenOfficialSchedule={() => setActivePage('schedule')}
+              />}
+        promo={currentExamPreset.category === 'cap' ? <CapAnalysisCard year={currentExamPreset.year} /> : IdentityPromoCard}
+      />
 
       {/* Footer */}
-      <footer className="text-center py-8 text-slate-400 text-xs flex flex-col items-center gap-4 relative z-10 border-t border-slate-200/50 pt-8 opacity-0 animate-fade-in delay-500">
-        <div>
-          <p className="mb-2">Built for {EXAM_PRESETS.find(p => p.id === targetExam)?.name || 'the class of 116'}. Stay Focused.</p>
-          {user && <p className="text-indigo-400 flex items-center justify-center gap-1"><Cloud className="w-3 h-3" /> 資料已加密並同步至雲端</p>}
-        </div>
-
-        <div className="flex flex-wrap justify-center gap-4 md:gap-8 text-[11px] font-medium text-slate-500">
-           <button onClick={() => setActivePage('instructions')} className="hover:text-slate-800 transition-colors">使用說明</button>
-           <button onClick={() => setActivePage('privacy')} className="hover:text-slate-800 transition-colors">隱私權政策</button>
-           <button onClick={() => setActivePage('terms')} className="hover:text-slate-800 transition-colors">服務條款</button>
-           <a href="mailto:tyctw.analyze@gmail.com" className="hover:text-slate-800 transition-colors">聯絡我們</a>
+      <footer className="-mb-4 mt-auto w-full pt-7 opacity-0 animate-fade-in delay-500 md:-mb-8">
+        <div className="border-y border-slate-200/80 bg-white/85 px-5 py-5 shadow-lg shadow-slate-200/40 backdrop-blur-xl sm:px-8 lg:px-12">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-200"><Sparkles className="h-4 w-4" /></span>
+              <div>
+                <div className="text-sm font-black tracking-tight text-slate-900">Focus Space</div>
+                <div className="mt-0.5 text-xs font-medium text-slate-500">為 {EXAM_PRESETS.find(p => p.id === targetExam)?.name || '每一位備考者'} 留下專注的軌跡</div>
+              </div>
+              {user && <span className="ml-1 hidden items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black text-emerald-700 sm:inline-flex"><Cloud className="h-3 w-3" />{!isCloudStateReady ? '等待同步連線' : isSyncing ? '同步中' : pendingStudySessionIds.length ? '有專注紀錄待同步' : '雲端同步已啟用'}</span>}
+            </div>
+            <nav className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-bold text-slate-500">
+              <PageLink page={'announcements'} examId={targetExam} onClick={() => setActivePage('announcements')} className="transition hover:text-indigo-600">最新公告</PageLink>
+              <PageLink page={'learning'} examId={targetExam} onClick={() => setActivePage('learning')} className="transition hover:text-indigo-600">學習歷程</PageLink>
+              <PageLink page={'schedule'} examId={targetExam} onClick={() => setActivePage('schedule')} className="transition hover:text-indigo-600">考試日程</PageLink>
+              <PageLink page={'instructions'} examId={targetExam} onClick={() => setActivePage('instructions')} className="transition hover:text-indigo-600">使用說明</PageLink>
+              <PageLink page={'donation'} examId={targetExam} onClick={() => setActivePage('donation')} className="inline-flex items-center gap-1 text-rose-500 transition hover:text-rose-600"><Heart className="h-3 w-3 fill-current" /> 贊助</PageLink>
+            </nav>
+          </div>
+          <div className="mt-4 flex flex-col gap-2 border-t border-slate-100 pt-3 text-[11px] font-medium text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+            <p>Stay focused, one day at a time.</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <PageLink page={'privacy'} examId={targetExam} onClick={() => setActivePage('privacy')} className="transition hover:text-slate-700">隱私權政策</PageLink>
+              <PageLink page={'terms'} examId={targetExam} onClick={() => setActivePage('terms')} className="transition hover:text-slate-700">服務條款</PageLink>
+              <button onClick={openAnalyticsSettings} className="transition hover:text-slate-700">Cookie 設定</button>
+              <a href="mailto:tyctw.analyze@gmail.com" className="transition hover:text-slate-700">聯絡我們</a>
+            </div>
+          </div>
         </div>
       </footer>
-
-      {/* Menu Drawer */}
-      <AnimatePresence>
-        {isMenuOpen && (
-          <div className="fixed inset-0 z-50 flex justify-end">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm" 
-              onClick={() => setIsMenuOpen(false)}
-            />
-            
-            <motion.div 
-              initial={{ x: '100%', borderTopLeftRadius: '32px', borderBottomLeftRadius: '32px' }}
-              animate={{ x: 0, borderTopLeftRadius: '24px', borderBottomLeftRadius: '24px' }}
-              exit={{ x: '100%', borderTopLeftRadius: '32px', borderBottomLeftRadius: '32px' }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="relative w-[85vw] max-w-[400px] h-full bg-white shadow-2xl flex flex-col overflow-hidden"
-              id="app-menu-drawer"
-              role="dialog"
-              aria-modal="true"
-              aria-label="功能選單"
-            >
-              {/* Decorative top gradient */}
-              <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-br from-indigo-50/80 via-purple-50/50 to-white -z-10" />
-
-              <div className="p-6 md:p-8 pt-8 flex justify-between items-start">
-                 <div>
-                    <h2 className="text-2xl font-black text-slate-800 tracking-tight">探索資源</h2>
-                    <p className="text-xs font-bold text-indigo-500/80 uppercase tracking-widest mt-1">Explore Resources</p>
-                 </div>
-                 <button 
-                   onClick={() => setIsMenuOpen(false)}
-                   className="w-10 h-10 rounded-full bg-white border border-slate-200 shadow-sm hover:bg-slate-50 flex items-center justify-center text-slate-500 transition-all hover:rotate-90 hover:scale-105"
-                   aria-label="關閉功能選單"
-                 >
-                   <X className="w-5 h-5" />
-                 </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto px-6 md:px-8 pb-8 custom-scrollbar space-y-8">
-                 
-                 {/* Group 1 */}
-                 <motion.div
-                   initial={{ opacity: 0, y: 20 }}
-                   animate={{ opacity: 1, y: 0 }}
-                   transition={{ delay: 0.05 }}
-                 >
-                    <div className="flex items-center gap-2 mb-4">
-                       <div className="w-1.5 h-4 bg-indigo-500 rounded-full"></div>
-                       <h3 className="text-sm font-black text-slate-800 tracking-wide">大考專區</h3>
-                    </div>
-                    
-                    <div className="space-y-3">
-                        <a href={currentExamLinks.pastUrl} target="_blank" rel="noopener noreferrer" className="group flex items-center gap-4 p-4 rounded-2xl bg-white shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] border border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/30 transition-all">
-                            <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
-                               <FileText className="w-5 h-5" />
-                            </div>
-                            <div className="flex-1">
-                               <div className="font-bold text-slate-700 group-hover:text-indigo-700 transition-colors">{currentExamLinks.pastTitle}</div>
-                               <div className="text-xs text-slate-400 font-medium mt-0.5">歷屆試題與解析</div>
-                            </div>
-                            <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all" />
-                        </a>
-
-                        <button onClick={handleScoreQueryClick} className="w-full group flex items-center gap-4 p-4 rounded-2xl bg-white shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] border border-slate-100 hover:border-amber-200 hover:bg-amber-50/30 transition-all text-left">
-                            <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500 group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-white transition-all duration-300">
-                               <Search className="w-5 h-5" />
-                            </div>
-                            <div className="flex-1">
-                               <div className="font-bold text-slate-700 group-hover:text-amber-700 transition-colors">{currentExamLinks.scoreTitle}</div>
-                               <div className="text-xs text-slate-400 font-medium mt-0.5">成績與落點分析</div>
-                            </div>
-                            <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
-                        </button>
-
-                        <button onClick={() => { setIsExamReminderOpen(true); setIsMenuOpen(false); }} className="w-full group flex items-center gap-4 p-4 rounded-2xl bg-white shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] border border-slate-100 hover:border-emerald-200 hover:bg-emerald-50/30 transition-all text-left">
-                            <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-500 group-hover:scale-110 group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300">
-                               <ClipboardCheck className="w-5 h-5" />
-                            </div>
-                            <div className="flex-1">
-                               <div className="font-bold text-slate-700 group-hover:text-emerald-700 transition-colors">考前檢查表</div>
-                               <div className="text-xs text-slate-400 font-medium mt-0.5">應考物品清單與規定</div>
-                            </div>
-                            <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
-                        </button>
-                    </div>
-                 </motion.div>
-
-                 {/* Group 2 */}
-                 <motion.div
-                   initial={{ opacity: 0, y: 20 }}
-                   animate={{ opacity: 1, y: 0 }}
-                   transition={{ delay: 0.15 }}
-                 >
-                    <div className="flex items-center gap-2 mb-4">
-                       <div className="w-1.5 h-4 bg-slate-300 rounded-full"></div>
-                       <h3 className="text-sm font-black text-slate-800 tracking-wide">關聯計畫</h3>
-                    </div>
-                    
-                    <div className="grid gap-2.5">
-                       {[
-                         { name: '分科測驗倒數', sub: 'AST Exam', url: 'https://uactw.vercel.app/', color: 'indigo', border: 'hover:border-indigo-300' },
-                         { name: '統測倒數', sub: 'TVET Exam', url: 'https://teece.vercel.app/', color: 'emerald', border: 'hover:border-emerald-300' },
-                         { name: '會考倒數', sub: 'CAP Exam', url: 'https://tyctw.github.io/clock/', color: 'amber', border: 'hover:border-amber-300' },
-                         { name: '115 會考倒數', sub: 'Legacy CAP', url: 'https://tyctw.github.io/115clock/', color: 'sky', border: 'hover:border-sky-300' }
-                       ].map((link, i) => {
-                         const colorMap: Record<string, string> = {
-                           indigo: 'hover:bg-indigo-50/80 hover:text-indigo-700 hover:shadow-indigo-100/50',
-                           emerald: 'hover:bg-emerald-50/80 hover:text-emerald-700 hover:shadow-emerald-100/50',
-                           amber: 'hover:bg-amber-50/80 hover:text-amber-700 hover:shadow-amber-100/50',
-                           sky: 'hover:bg-sky-50/80 hover:text-sky-700 hover:shadow-sky-100/50',
-                         };
-                         return (
-                           <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className={`flex items-center justify-between p-4 rounded-xl border border-slate-100 bg-white shadow-sm transition-all group ${colorMap[link.color]} ${link.border}`}>
-                              <div className="flex flex-col">
-                                 <div className="font-bold text-slate-700 text-sm group-hover:text-inherit transition-colors">{link.name}</div>
-                                 <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{link.sub}</div>
-                              </div>
-                              <ExternalLink className="w-4 h-4 text-slate-300 group-hover:text-inherit opacity-50 group-hover:opacity-100 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-                           </a>
-                         );
-                       })}
-                    </div>
-                 </motion.div>
-                 
-                 {/* Footer Links */}
-                 <motion.div 
-                   initial={{ opacity: 0, y: 20 }}
-                   animate={{ opacity: 1, y: 0 }}
-                   transition={{ delay: 0.25 }}
-                   className="pt-6 mt-4 border-t border-slate-100/80 flex gap-3"
-                 >
-                    <button 
-                      onClick={() => { setActivePage('instructions'); setIsMenuOpen(false); }}
-                      className="flex-1 py-3 px-3 bg-slate-50 hover:bg-slate-100 rounded-xl text-xs font-bold text-slate-600 transition-all border border-transparent hover:border-slate-200"
-                    >
-                      📖 使用說明
-                    </button>
-                    <button 
-                      onClick={() => { setActivePage('privacy'); setIsMenuOpen(false); }}
-                      className="flex-1 py-3 px-3 bg-slate-50 hover:bg-slate-100 rounded-xl text-xs font-bold text-slate-600 transition-all border border-transparent hover:border-slate-200"
-                    >
-                      🛡️ 隱私權
-                    </button>
-                    <button 
-                      onClick={() => { setActivePage('terms'); setIsMenuOpen(false); }}
-                      className="flex-1 py-3 px-3 bg-slate-50 hover:bg-slate-100 rounded-xl text-xs font-bold text-slate-600 transition-all border border-transparent hover:border-slate-200"
-                    >
-                      📜 服務條款
-                    </button>
-                 </motion.div>
-
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* Settings Modal */}
       <AnimatePresence>
         {isSettingsOpen && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <ModalLayer className="fixed inset-0 z-[60] flex items-center justify-center p-4">
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -2322,7 +2338,7 @@ const App: React.FC = () => {
                        
                        <div className="bg-slate-50/70 border border-slate-100 rounded-[24px] p-2 space-y-2 relative overflow-hidden">
                           {/* Category Selector Tabs */}
-                          <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-100 overflow-x-auto no-scrollbar">
+                          <div className="grid grid-cols-2 gap-1 bg-white p-1 rounded-xl shadow-sm border border-slate-100 min-[420px]:grid-cols-4">
                              {[
                                { id: 'gsat', name: '學測', icon: '📝', text: 'text-indigo-600', bg: 'bg-indigo-50' },
                                { id: 'cap', name: '會考', icon: '🎯', text: 'text-teal-600', bg: 'bg-teal-50' },
@@ -2334,7 +2350,7 @@ const App: React.FC = () => {
                                  <button
                                    key={cat.id}
                                    onClick={() => setSelectedCategory(cat.id as any)}
-                                   className={`flex-1 relative py-2.5 px-3 rounded-lg text-sm font-bold transition-all whitespace-nowrap z-10 flex items-center justify-center gap-1.5 ${
+                                   className={`relative flex min-w-0 items-center justify-center gap-1 rounded-lg px-2 py-2.5 text-xs font-bold transition-all z-10 min-[420px]:px-3 min-[420px]:text-sm ${
                                      isActive
                                        ? cat.text
                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
@@ -2371,11 +2387,11 @@ const App: React.FC = () => {
                                    onClick={() => {
                                      if (exam.id !== targetExam) {
                                        const currentPreset = EXAM_PRESETS.find(e => e.id === targetExam);
-                                       if (currentPreset && currentPreset.category !== exam.category) {
+                                       if (user && currentPreset && currentPreset.category !== exam.category) {
                                          setPendingExamSwitch(exam);
                                        } else {
-                                         setTargetExam(exam.id);
-                                         setTargetDateStr(exam.date);
+                                         setSyncedTargetExam(exam.id);
+                                         setSyncedTargetDateStr(exam.date);
                                        }
                                      }
                                    }}
@@ -2458,9 +2474,9 @@ const App: React.FC = () => {
                                 type="text" 
                                 value={targetSchool} 
                                 maxLength={15} 
-                                onChange={(e) => setTargetSchool(e.target.value)} 
+                                onChange={(e) => setSyncedTargetSchool(e.target.value)} 
                                 aria-label="目標學校"
-                                className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] py-3.5 pl-12 pr-4 text-slate-800 font-bold text-sm outline-none hover:bg-white hover:border-slate-200 focus:border-indigo-400 focus:bg-white focus:shadow-md transition-all" 
+                                className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] py-3.5 pl-12 pr-4 text-slate-800 font-bold text-sm outline-none hover:bg-white hover:border-slate-200 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/20 focus:outline-none transition-all" 
                                 placeholder="目標大學 (例如：國立台灣大學)" 
                              />
                           </div>
@@ -2473,9 +2489,9 @@ const App: React.FC = () => {
                                 type="text" 
                                 value={targetMajor} 
                                 maxLength={15} 
-                                onChange={(e) => setTargetMajor(e.target.value)} 
+                                onChange={(e) => setSyncedTargetMajor(e.target.value)} 
                                 aria-label="目標科系"
-                                className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] py-3.5 pl-12 pr-4 text-slate-800 font-bold text-sm outline-none hover:bg-white hover:border-slate-200 focus:border-indigo-400 focus:bg-white focus:shadow-md transition-all" 
+                                className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] py-3.5 pl-12 pr-4 text-slate-800 font-bold text-sm outline-none hover:bg-white hover:border-slate-200 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/20 focus:outline-none transition-all" 
                                 placeholder="目標科系 (例如：醫學系)" 
                              />
                           </div>
@@ -2495,9 +2511,9 @@ const App: React.FC = () => {
                           <input 
                             type="datetime-local" 
                             value={targetDateStr} 
-                            onChange={(e) => { if(e.target.value) setTargetDateStr(e.target.value); }} 
+                            onChange={(e) => { if(e.target.value) setSyncedTargetDateStr(e.target.value); }} 
                             aria-label="考試日期與時間"
-                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] py-3.5 pl-12 pr-4 text-slate-800 font-bold text-sm outline-none hover:bg-white hover:border-slate-200 focus:border-indigo-400 focus:bg-white focus:shadow-md transition-all appearance-none" 
+                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] py-3.5 pl-12 pr-4 text-slate-800 font-bold text-sm outline-none hover:bg-white hover:border-slate-200 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/20 focus:outline-none transition-all appearance-none" 
                           />
                        </div>
                     </div>
@@ -2533,7 +2549,7 @@ const App: React.FC = () => {
                                 max="600" 
                                 step="10" 
                                 value={dailyGoal} 
-                                onChange={(e) => setDailyGoal(Number(e.target.value))} 
+                                onChange={(e) => setSyncedDailyGoal(Number(e.target.value))} 
                                 aria-label="每日讀書目標"
                                 aria-valuetext={`${Math.floor(dailyGoal / 60)} 小時 ${dailyGoal % 60} 分鐘`}
                                 className="absolute inset-0 w-full bg-transparent appearance-none cursor-pointer z-20 slider-thumb-custom"
@@ -2625,79 +2641,38 @@ const App: React.FC = () => {
                 </div>
               )}
             </motion.div>
-          </div>
+          </ModalLayer>
         )}
       </AnimatePresence>
 
       {/* Auth Modal */}
+      <DeferredContent active={isTempleOpen}>
       <TempleModal
+        isVerified={isTempleVerified}
         isOpen={isTempleOpen}
         onClose={() => setIsTempleOpen(false)}
         incenseCoins={incenseCoins}
-        setIncenseCoins={setIncenseCoins}
         incenseRecords={incenseRecords}
-        setIncenseRecords={setIncenseRecords}
         templeState={templeState}
-        setTempleState={setTempleState}
+        onPerformRitual={handleTempleRitual}
+        onCheckSync={handleCheckStudySync}
+        pendingStudyCount={pendingStudySessionIds.length}
+        syncMessage={studySyncError}
         userName={user?.name}
         targetSchool={targetSchool}
       />
-      <AuthModal 
-        isOpen={isAuthOpen} 
-        onClose={() => {
-          setIsAuthOpen(false);
-          setAuthInitialMode(undefined);
-          setAuthInitialEmail(undefined);
-          setAuthInitialResetCode(undefined);
-        }} 
-        onLoginSuccess={handleLoginSuccess}
-        onLogout={handleLogout}
-        currentData={getCurrentData()}
-        currentUser={user}
-        initialMode={authInitialMode}
-        initialEmail={authInitialEmail}
-        initialResetCode={authInitialResetCode}
-        onShowPrivacy={() => { setIsAuthOpen(false); setActivePage('privacy'); }}
-        onShowInstructions={() => { setIsAuthOpen(false); setActivePage('instructions'); }}
-        onShowTerms={() => { setIsAuthOpen(false); setActivePage('terms'); }}
-      />
+      </DeferredContent>
       
       {/* Achievements Modal */}
+      <DeferredContent active={isAchievementsOpen}>
       <AchievementsModal
         isOpen={isAchievementsOpen}
         onClose={() => setIsAchievementsOpen(false)}
         data={getCurrentData()}
       />
+      </DeferredContent>
 
-      <AnimatePresence>
-        {isCommunityStudyOpen && (
-          <div
-            className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/55 backdrop-blur-md"
-            onClick={() => setIsCommunityStudyOpen(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 18 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 18 }}
-              transition={{ type: 'spring', stiffness: 260, damping: 24 }}
-              className="relative w-full max-w-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                onClick={() => setIsCommunityStudyOpen(false)}
-                className="absolute -top-3 -right-3 z-10 h-10 w-10 rounded-full bg-white text-slate-500 shadow-lg border border-slate-100 flex items-center justify-center hover:text-rose-600 hover:border-rose-100 transition-colors"
-                aria-label="關閉今日共讀彈窗"
-              >
-                <X className="w-5 h-5" />
-              </button>
-              <TodayCommunityStudy sessions={studySessions} />
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-      
       {/* Info Modals */}
-      <AnnouncementModal isOpen={isAnnouncementOpen} onClose={() => setIsAnnouncementOpen(false)} />
       <ScoreQueryModal 
          isOpen={isScoreWarningOpen} 
          onClose={() => setIsScoreWarningOpen(false)} 
@@ -2706,13 +2681,13 @@ const App: React.FC = () => {
          openTime={currentScoreInfo.displayStr}
       />
       <LoginSuggestionModal isOpen={isLoginSuggestionOpen} onClose={handleCloseLoginSuggestion} onLogin={handleSuggestionToAuth} />
-      <ExamReminderModal isOpen={isExamReminderOpen} onClose={handleCloseExamReminder} checkedItems={examChecklist} onCheckChange={setExamChecklist} />
+      <ExamReminderModal isOpen={isExamReminderOpen} onClose={handleCloseExamReminder} checkedItems={examChecklist} onCheckChange={setSyncedExamChecklist} />
 
       <TvetCategoryModal
         isOpen={isTvetCategoryModalOpen}
         onClose={() => setIsTvetCategoryModalOpen(false)}
         selectedCategory={tvetCategory}
-        onSelect={(id) => setTvetCategory(id)}
+        onSelect={(id) => setSyncedTvetCategory(id)}
       />
 
       <ConfirmExamSwitchModal
@@ -2720,8 +2695,8 @@ const App: React.FC = () => {
         onClose={() => setPendingExamSwitch(null)}
         onConfirm={() => {
           if (pendingExamSwitch) {
-            setTargetExam(pendingExamSwitch.id);
-            setTargetDateStr(pendingExamSwitch.date);
+            setSyncedTargetExam(pendingExamSwitch.id);
+            setSyncedTargetDateStr(pendingExamSwitch.date);
             setPendingExamSwitch(null);
             if (isSettingsOpen) setIsSettingsOpen(false);
           }
@@ -2734,13 +2709,8 @@ const App: React.FC = () => {
         onClose={handleAchievementToastClose} 
       />
 
-      {/* Welcome Animation */}
-      {showWelcome && user && (
-        <WelcomeSplash 
-          userName={user.name} 
-          onComplete={handleWelcomeComplete} 
-        />
-      )}
+      <AnalyticsConsent />
+
     </div>
   );
 };

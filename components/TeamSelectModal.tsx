@@ -1,7 +1,8 @@
+import ModalLayer from './ModalLayer';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Building2, CheckCircle2, GraduationCap, MapPin, Search, X } from 'lucide-react';
+import { Building2, CheckCircle2, ChevronDown, GraduationCap, MapPin, Search, SlidersHorizontal, X } from 'lucide-react';
 import { SCHOOLS } from './data/schools';
 
 interface TeamSelectModalProps {
@@ -14,6 +15,7 @@ const TeamSelectModal: React.FC<TeamSelectModalProps> = ({ isOpen, onClose, onSe
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCity, setSelectedCity] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<'all' | '公立' | '私立'>('all');
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const cities = useMemo(() => {
@@ -50,7 +52,7 @@ const TeamSelectModal: React.FC<TeamSelectModalProps> = ({ isOpen, onClose, onSe
 
   return createPortal(
     <AnimatePresence>
-      <div className="fixed inset-0 z-[70000] flex items-center justify-center p-3 sm:p-4">
+      <ModalLayer className="fixed inset-0 z-[70000] flex items-center justify-center p-3 sm:p-4">
         <motion.div 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -107,33 +109,46 @@ const TeamSelectModal: React.FC<TeamSelectModalProps> = ({ isOpen, onClose, onSe
                 )}
               </div>
 
-              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide -mx-1 px-1">
-                {cities.map(city => (
-                  <button
-                    key={city}
-                    onClick={() => setSelectedCity(city)}
-                    className={`flex-shrink-0 whitespace-nowrap rounded-xl px-3.5 py-2 text-[11px] font-black tracking-widest transition-all ${selectedCity === city ? 'bg-slate-950 text-white shadow-md' : 'bg-white text-slate-500 shadow-sm ring-1 ring-slate-100 hover:bg-slate-50 hover:text-slate-800'}`}
-                  >
-                    {city === 'all' ? '全部地區' : city}
-                  </button>
-                ))}
-              </div>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setIsFiltersOpen(open => !open)}
+                  aria-expanded={isFiltersOpen}
+                  className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-600 shadow-sm transition hover:border-indigo-200 hover:text-indigo-700"
+                >
+                  <span className="inline-flex items-center gap-2"><SlidersHorizontal className="h-4 w-4" /> 篩選學校</span>
+                  <span className="inline-flex items-center gap-2 text-xs text-slate-400">{selectedCity === 'all' ? '全部地區' : selectedCity}{selectedType === 'all' ? '' : `・${selectedType}`}<ChevronDown className={`h-4 w-4 transition-transform ${isFiltersOpen ? 'rotate-180' : ''}`} /></span>
+                </button>
 
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
-                  {(['all', '公立', '私立'] as const).map(type => (
-                    <button
-                      key={type}
-                      onClick={() => setSelectedType(type)}
-                      className={`rounded-xl px-3 py-1.5 text-[11px] font-black transition-all ${selectedType === type ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
-                    >
-                      {type === 'all' ? '全部' : type}
-                    </button>
-                  ))}
-                </div>
-                <div className="text-[11px] font-black tracking-widest text-slate-400">
-                  {filteredSchools.length.toLocaleString()} 所學校
-                </div>
+                {isFiltersOpen && (
+                  <div className="mt-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                      {cities.map(city => (
+                        <button
+                          key={city}
+                          onClick={() => setSelectedCity(city)}
+                          className={`flex-shrink-0 whitespace-nowrap rounded-xl px-3 py-2 text-[11px] font-black tracking-widest transition-all ${selectedCity === city ? 'bg-slate-950 text-white shadow-md' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}
+                        >
+                          {city === 'all' ? '全部地區' : city}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                      <div className="flex rounded-xl bg-slate-100 p-1">
+                        {(['all', '公立', '私立'] as const).map(type => (
+                          <button
+                            key={type}
+                            onClick={() => setSelectedType(type)}
+                            className={`rounded-lg px-3 py-1.5 text-[11px] font-black transition-all ${selectedType === type ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                          >
+                            {type === 'all' ? '全部' : type}
+                          </button>
+                        ))}
+                      </div>
+                      <span className="text-[11px] font-black tracking-widest text-slate-400">{filteredSchools.length.toLocaleString()} 所學校</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -189,7 +204,7 @@ const TeamSelectModal: React.FC<TeamSelectModalProps> = ({ isOpen, onClose, onSe
             )}
           </div>
         </motion.div>
-      </div>
+      </ModalLayer>
     </AnimatePresence>,
     document.body
   );

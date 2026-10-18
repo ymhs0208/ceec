@@ -1,0 +1,65 @@
+{
+  "advisories": {
+    "1240992": {
+      "findings": [
+        {
+          "version": "3.0.3",
+          "paths": [
+            ".>tailwindcss>chokidar>braces",
+            ".>tailwindcss>fast-glob>micromatch>braces",
+            ".>tailwindcss>micromatch>braces"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1240992,
+      "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns",
+      "module_name": "braces",
+      "vulnerable_versions": "<=3.0.3",
+      "patched_versions": null,
+      "severity": "high",
+      "cwe": "CWE-674",
+      "github_advisory_id": "GHSA-vfj7-8cjw-p6xm",
+      "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+      "patched_versions_unpublished": true
+    },
+    "1241232": {
+      "findings": [
+        {
+          "version": "6.1.4",
+          "paths": [
+            ".>tailwindcss>postcss-nested>postcss-selector-parser",
+            ".>tailwindcss>postcss-selector-parser"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1241232,
+      "title": "PostCSS: Quadratic complexity in flat selector parsing allows CPU exhaustion",
+      "module_name": "postcss-selector-parser",
+      "vulnerable_versions": "<7.1.6",
+      "patched_versions": ">=7.1.6",
+      "severity": "moderate",
+      "cwe": "CWE-400, CWE-407",
+      "github_advisory_id": "GHSA-rj75-hqrm-r3gf",
+      "url": "https://github.com/advisories/GHSA-rj75-hqrm-r3gf"
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 1,
+      "high": 1,
+      "critical": 0
+    },
+    "dependencies": 9,
+    "devDependencies": 180,
+    "optionalDependencies": 53,
+    "totalDependencies": 189
+  }
+}

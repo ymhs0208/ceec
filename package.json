@@ -3,33 +3,52 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "packageManager": "pnpm@11.7.0",
+  "packageManager": "pnpm@11.25.0",
   "engines": {
     "node": "24.x"
   },
   "scripts": {
+    "test": "node scripts/test-all.mjs",
+    "test:browser": "pnpm build && node scripts/test-browser.mjs",
+    "preinstall": "node scripts/check-package-manager.mjs",
+    "test:dependencies": "node scripts/test-dependency-security.mjs",
+    "test:routes": "node scripts/test-app-routes.mjs",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json",
+    "test:server": "node scripts/test-server-session-security.mjs",
+    "test:auth-sync": "node scripts/test-auth-sync-errors.mjs",
+    "test:sync-read": "node scripts/test-sync-read-failure.mjs",
+    "test:logout-backup": "node scripts/test-logout-backup.mjs",
+    "test:study-reset": "node scripts/test-study-history-reset.mjs",
+    "test:storage": "node scripts/test-storage-failures.mjs",
+    "test:timer": "node scripts/test-timer-regressions.mjs",
+    "test:hydration": "node scripts/test-hydration-retry.mjs",
+    "test:focus": "node scripts/test-focus-reconciliation.mjs",
+    "test:achievements": "node scripts/test-achievements.mjs",
     "migrate:supabase": "node scripts/migrate-legacy-to-supabase.mjs",
     "generate-teams": "node scripts/preprocess_teams.cjs"
   },
   "dependencies": {
-    "@google/genai": "^1.40.0",
     "canvas-confetti": "^1.9.4",
-    "framer-motion": "^12.36.0",
+    "framer-motion": "^12.42.2",
     "lucide-react": "^0.563.0",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10",
     "@types/canvas-confetti": "^1.9.0",
-    "@types/node": "^22.14.0",
-    "@vitejs/plugin-react": "^5.0.0",
+    "@types/node": "^22.20.5",
+    "@vitejs/plugin-react": "^5.2.0",
+    "autoprefixer": "^10.6.1",
     "dotenv": "^17.4.2",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0",
-    "xlsx": "^0.18.5"
+    "playwright": "^1.64.1",
+    "postcss": "^8.5.29",
+    "tailwindcss": "^3.4.19",
+    "typescript": "~5.8.3",
+    "vite": "^6.4.4",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   }
 }

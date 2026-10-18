@@ -1,3 +1,4 @@
+import ModalLayer from './ModalLayer';
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertCircle, Calendar, ArrowRight } from 'lucide-react';
@@ -20,7 +21,7 @@ const ConfirmExamSwitchModal: React.FC<ConfirmExamSwitchModalProps> = ({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <ModalLayer className="fixed inset-0 z-[100] flex items-center justify-center p-4">
         <motion.div 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -78,7 +79,7 @@ const ConfirmExamSwitchModal: React.FC<ConfirmExamSwitchModalProps> = ({
             </div>
           </div>
         </motion.div>
-      </div>
+      </ModalLayer>
     </AnimatePresence>
   );
 };

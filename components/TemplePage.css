@@ -1,0 +1,110 @@
+.temple-page { --temple-ink:#615244; --temple-muted:#958878; --temple-line:#ebe4d8; position:relative; width:100%; max-width:1200px; min-width:0; margin:0 auto; padding:4px 0 0; color:var(--temple-ink); overflow-wrap:anywhere; }
+.temple-page *, .temple-page *::before, .temple-page *::after { box-sizing:border-box; }
+.temple-page button:focus-visible { outline:3px solid #c4a981; outline-offset:4px; }
+.temple-hero { display:flex; align-items:end; justify-content:space-between; gap:40px; padding:0 0 26px; }
+.temple-intro { flex:1; min-width:0; }
+.temple-back { display:inline-flex; align-items:center; gap:7px; min-height:36px; color:#948c80; font-size:12px; margin-bottom:24px; }
+.temple-back:hover { color:#a4775c; }
+.temple-title-row { display:flex; align-items:center; gap:19px; }
+.temple-seal { display:grid; place-items:center; width:60px; height:64px; flex-shrink:0; border:1px solid #c99783; border-radius:8px; outline:1px solid #d8b7a7; outline-offset:-5px; font-family:ui-serif,"Noto Serif TC",serif; color:#b27866; font-size:31px; background:#f7efea; transform:rotate(-4deg); }
+.temple-eyebrow { margin:0 0 9px; font-size:9px; letter-spacing:1.7px; color:#ac9679; font-weight:700; line-height:1.8; }
+.temple-title-row h1 { font-family:ui-serif,"Noto Serif TC",serif; font-size:clamp(28px,3vw,39px); font-weight:650; line-height:1.4; letter-spacing:2px; color:#66503e; }
+.temple-title-row h1 > span { color:#b7a17e; }
+.temple-intro-note { color:#897a67; font-size:12px; margin:19px 0 0; letter-spacing:.5px; line-height:1.9; }
+.temple-wallet { flex-shrink:0; width:285px; padding:20px 24px; border:1px solid #e8ddc8; border-radius:18px; background:#f5f0e5; }
+.temple-wallet-heading, .temple-wallet-heading > span { display:flex; align-items:center; justify-content:space-between; gap:7px; font-size:11px; color:#a28a63; }
+.temple-wallet-heading > span:last-child { font-size:9px; border:1px solid #e1d5bf; border-radius:5px; padding:3px 5px; }
+.temple-wallet-heading .is-verified { color:#7b9477; border-color:#d7dfcb; }
+.temple-wallet-balance { display:flex; align-items:baseline; gap:8px; margin:9px 0 12px; color:#aa8a56; }
+.temple-wallet-balance strong { font-size:36px; line-height:1.2; letter-spacing:-1px; font-weight:500; font-variant-numeric:tabular-nums; }
+.temple-wallet-balance > span { font-size:11px; color:#ae9d82; }
+.temple-wallet > p { display:flex; align-items:center; gap:6px; color:#ad9c82; font-size:9px; line-height:1.7; }
+.temple-verification { display:flex; align-items:start; gap:9px; margin:0 0 21px; border:1px solid #eae0cd; padding:12px 16px; border-radius:12px; background:#faf6ed; color:#8b7755; font-size:11px; line-height:1.9; }
+.temple-verification > svg { flex-shrink:0; margin-top:3px; }
+.temple-workspace { display:grid; grid-template-columns:minmax(0,1fr) 310px; align-items:start; gap:22px; }
+.temple-workspace > * { min-width:0; }
+.temple-navigation { grid-column:1/-1; }
+.temple-tabs { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px; border:1px solid var(--temple-line); border-radius:17px; padding:7px; background:#fffdf9; }
+.temple-tab { position:relative; display:grid; grid-template-columns:34px minmax(0,1fr); grid-template-rows:auto auto; align-items:center; column-gap:10px; row-gap:3px; min-width:0; min-height:73px; padding:13px 15px; border-radius:11px; text-align:left; color:#968979; }
+.temple-tab > * { position:relative; }
+.temple-tab > .temple-tab-highlight { position:absolute; inset:0; border-radius:11px; border:1px solid #ead8c9; background:#f7eee5; }
+.temple-tab-icon { display:grid; place-items:center; grid-column:1; grid-row:1/3; width:34px; height:34px; border-radius:10px; background:#f7f3ec; color:#ad9a7d; }
+.temple-tab[data-active=true] .temple-tab-icon { background:#eddccc; color:#ae795d; }
+.temple-tab-label { grid-column:2; grid-row:1; font-size:13px; font-weight:650; color:#7f7568; }
+.temple-tab-caption { grid-column:2; grid-row:2; font-size:9px; color:#8b7a62; }
+.temple-tab[data-active=true] .temple-tab-label { color:#976e51; }
+.temple-tab:hover:not([data-active=true]) { background:#faf7f2; }
+.temple-stage { display:flex; align-items:center; justify-content:center; flex-direction:column; min-height:500px; padding:29px; border:1px solid var(--temple-line); border-radius:21px; background:#fffdf9; text-align:center; }
+.temple-page .temple-scene { border-radius:17px; border-color:#ece2d1; background:linear-gradient(180deg,#fcf8ef,#f2eadb); box-shadow:none; }
+.temple-page .temple-ritual-description { padding:17px 0 0; border:0; border-radius:0; background:transparent; }
+.temple-page .temple-ritual-description h3, .temple-page .temple-ritual-body > div > h3 { font-size:18px; font-weight:650; color:#7c614a; }
+.temple-page .temple-ritual-description p, .temple-page .temple-ritual-body > div:not(.ritual-keepsake) > p { color:#89745d; font-size:12px; line-height:1.9; }
+.temple-page .temple-stage button.bg-gradient-to-r { background:#b28c66; color:#fffdf8; border:1px solid #a9805b; min-height:44px; border-radius:10px; box-shadow:none; font-size:12px; }
+.temple-page .temple-stage button.bg-gradient-to-r:hover:not(:disabled) { background:#a67d55; transform:none; }
+.temple-page .temple-stage button.bg-gradient-to-r:disabled { opacity:.55; }
+.temple-sidebar { display:flex; flex-direction:column; gap:16px; }
+.temple-wish { padding:23px; border:1px solid #e7ded0; border-radius:19px; background:#f6f1e8; }
+.temple-wish > .temple-eyebrow { font-size:8px; letter-spacing:1.2px; }
+.temple-wish h2 { color:#8f7756; font-size:15px; font-weight:650; margin-bottom:17px; }
+.temple-wish-paper { position:relative; padding:21px 17px; border:1px solid #e9decd; border-radius:4px; background:repeating-linear-gradient(0deg,transparent 0,transparent 29px,#bba87e08 29px,#bba87e08 30px),#fffcf4; box-shadow:0 4px 8px #8e735207; }
+.temple-wish-mark { position:absolute; right:13px; top:13px; display:grid; place-items:center; width:26px; height:30px; border:1px solid #d3a391; border-radius:4px; color:#ba8874; font-family:ui-serif,serif; font-size:15px; transform:rotate(7deg); }
+.temple-wish-paper > p { max-width:calc(100% - 30px); font-size:11px; color:#ac977b; line-height:1.8; }
+.temple-wish-paper > strong { display:block; font-family:ui-serif,"Noto Serif TC",serif; font-size:24px; font-weight:500; line-height:1.8; letter-spacing:2px; margin:13px 0; color:#9a7a55; }
+.temple-wish-paper > span:last-child { display:block; font-size:10px; line-height:1.9; color:#ae9b7e; }
+.temple-prayer-status { padding:20px 23px; border:1px solid var(--temple-line); border-radius:17px; background:#fffdf9; }
+.temple-sidebar h2 { display:flex; align-items:center; gap:7px; font-size:12px; font-weight:650; color:#9e896a; }
+.temple-prayer-status > div { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:15px; font-size:10px; color:#a89a85; }
+.temple-prayer-status strong { display:flex; align-items:center; gap:4px; font-weight:500; color:#9d886b; }
+.temple-guide { padding:8px 10px; }
+.temple-guide ol { margin-top:14px; }
+.temple-guide li { display:flex; align-items:center; gap:10px; color:#897a66; font-size:10px; line-height:2.7; }
+.temple-guide li > span { color:#c0ae90; font-size:9px; font-variant-numeric:tabular-nums; }
+.temple-guide > p { border-top:1px solid var(--temple-line); margin-top:14px; padding-top:14px; font-size:9px; line-height:1.9; color:#b0a38c; }
+.temple-footer { display:flex; align-items:center; justify-content:center; gap:13px; padding:29px 0 8px; color:#b3a58d; font-size:10px; letter-spacing:1px; }
+.temple-footer > span { width:28px; height:1px; background:#ded5c6; }
+.temple-sync-panel { padding:15px 17px; margin-bottom:19px; border:1px solid #e4d9c5; border-radius:13px; background:#fffcf5; text-align:left; }
+.temple-sync-panel > div { display:flex; align-items:center; justify-content:space-between; gap:13px; }
+.temple-sync-panel strong { font-size:12px; font-weight:600; color:#90754d; }
+.temple-sync-panel p { margin-top:5px; color:#a08d6e; font-size:11px; line-height:1.9; }
+.temple-sync-panel button { flex-shrink:0; min-height:42px; padding:9px 14px; border:1px solid #d6c29f; border-radius:9px; background:#f1e4cd; font-size:11px; color:#8e6b3e; }
+.temple-sync-panel button:disabled { opacity:.5; cursor:wait; }
+.temple-sync-panel .temple-sync-report { max-height:280px; overflow:auto; margin-top:12px; padding-top:11px; border-top:1px solid #ece0cb; white-space:pre-line; overflow-wrap:anywhere; }
+@media(max-width:359px) { .temple-sync-panel { padding:12px; }.temple-sync-panel > div { align-items:start; flex-direction:column; }.temple-sync-panel button { width:100%; } }
+.temple-shell { background:#f9f7f2; }
+.temple-shell > .animate-blob { display:none; }
+.temple-shell .header-group-trigger.is-current, .temple-shell .header-target { background:#f5efe6; color:#a08c6e; }
+.temple-shell .header-brand small { color:#af9977; }
+.temple-shell .header-mobile-trigger { background:#ad9575; }
+@media(max-width:1023px) { .temple-workspace { grid-template-columns:minmax(0,1fr) 260px; gap:16px; } .temple-tab { padding:12px 10px; column-gap:7px; } .temple-tab-label { font-size:12px; } .temple-stage { padding:22px; } .temple-wish { padding:18px; } }
+@media(max-width:767px) {
+  .temple-hero { align-items:stretch; flex-direction:column; gap:20px; padding-bottom:17px; }
+  .temple-back { margin-bottom:17px; }
+  .temple-title-row { gap:13px; }
+  .temple-seal { width:44px; height:50px; font-size:25px; border-radius:6px; }
+  .temple-title-row h1 { font-size:28px; letter-spacing:1px; }
+  .temple-title-row .temple-eyebrow { font-size:7px; letter-spacing:1.2px; margin-bottom:5px; }
+  .temple-intro-note { font-size:11px; margin-top:13px; }
+  .temple-wallet { width:100%; padding:15px 18px; border-radius:15px; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:8px; }
+  .temple-wallet-heading { justify-content:start; }
+  .temple-wallet-heading > span:last-child { font-size:8px; }
+  .temple-wallet-balance { grid-column:2; grid-row:1/3; margin:0; }
+  .temple-wallet-balance strong { font-size:31px; }
+  .temple-wallet > p { font-size:9px; }
+  .temple-verification { margin-bottom:16px; padding:11px 13px; font-size:10px; }
+  .temple-workspace { grid-template-columns:minmax(0,1fr); gap:15px; }
+  .temple-tabs { grid-template-columns:repeat(4,minmax(0,1fr)); gap:3px; padding:5px; border-radius:14px; }
+  .temple-tab { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; min-height:88px; padding:10px 2px; text-align:center; }
+  .temple-tab-icon { width:27px; height:27px; border-radius:8px; }
+  .temple-tab-icon svg { width:14px; height:14px; }
+  .temple-tab-label { font-size:11px; line-height:1.5; }
+  .temple-tab-caption { font-size:9px; line-height:1.5; }
+  .temple-stage { padding:18px; min-height:400px; border-radius:17px; }
+  .temple-page .temple-ritual-description h3 { font-size:16px; }
+  .temple-page .temple-ritual-description p { font-size:11px; }
+  .temple-sidebar { gap:14px; }
+  .temple-wish { padding:20px; }
+  .temple-wish-paper > strong { font-size:25px; }
+  .temple-footer { font-size:9px; }
+}
+@media(max-width:359px) { .temple-tab-label { font-size:10px; } .temple-tab-caption { font-size:8px; } .temple-wallet { padding:13px; } .temple-stage { padding:14px; } }
+@media(prefers-reduced-motion:reduce) { .temple-page *, .temple-page *::before, .temple-page *::after { animation:none !important; transition:none !important; } }
